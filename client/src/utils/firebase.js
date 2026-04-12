@@ -1,9 +1,9 @@
-
 import { initializeApp } from "firebase/app";
-import {getAuth, GoogleAuthProvider} from "firebase/auth"
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
+
 const firebaseConfig = {
   apiKey: "AIzaSyB8T6NvX8-KRk3Ql-tuTnUOoqgzwnDWIu0",
-  authDomain: "ai-interview-app-d2baf.firebaseapp.com",
+  authDomain: "ai-interview-app-d2baf.firebaseapp.com", // ✅ KEEP THIS
   projectId: "ai-interview-app-d2baf",
   storageBucket: "ai-interview-app-d2baf.firebasestorage.app",
   messagingSenderId: "466532609784",
@@ -11,25 +11,21 @@ const firebaseConfig = {
   measurementId: "G-X30XP3TK8G"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
+// Auth
 const auth = getAuth(app);
-auth.useDeviceLanguage();
 
-// For development, add all possible localhost ports as authorized redirect URIs
-if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-  try {
-    // This tells Firebase this is a localhost dev environment
-    auth.settings.appVerificationDisabledForTesting = true;
-  } catch {
-    // Silently ignore if not available
-  }
-}
+// ❌ REMOVED (causes issues in production)
+// auth.useDeviceLanguage();
 
+// Google Provider
 const provider = new GoogleAuthProvider();
-provider.setCustomParameters({ 
-  prompt: "select_account",
-  access_type: "offline"
+
+// Optional (clean config)
+provider.setCustomParameters({
+  prompt: "select_account"
 });
 
-export { auth, provider }
+export { auth, provider };
