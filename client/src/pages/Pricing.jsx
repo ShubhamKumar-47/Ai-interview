@@ -63,8 +63,8 @@ function Pricing() {
       setLoadingPlan(plan.id);
 
       const amount =
-        plan.id === "basic" ? 100 :
-        plan.id === "pro" ? 500 : 0;
+        plan.id === "basic" ? 10 :
+        plan.id === "pro" ? 50 : 0;
 
       // 🔥 FIX 1: correct route name
       const { data } = await axios.post(
