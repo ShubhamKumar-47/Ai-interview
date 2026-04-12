@@ -13,21 +13,22 @@ dotenv.config();
 
 const app = express();
 
-// ✅ Allowed origins (IMPORTANT)
+// ✅ Allowed origins (FIXED)
 const allowedOrigins = [
-  "http://localhost:5173", // local frontend
-  "https://ai-interview.vercel.app" // 🔥 replace with your real Vercel URL
+  "http://localhost:5173",
+  "https://ai-interview-shubh.vercel.app" // ✅ your real frontend
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin (like Postman)
+      // allow requests with no origin (Postman etc.)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       } else {
+        console.log("Blocked by CORS:", origin);
         return callback(new Error("CORS policy violation"));
       }
     },
@@ -38,7 +39,7 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-// ✅ Test route (important for Render check)
+// ✅ Health check route
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
 });
