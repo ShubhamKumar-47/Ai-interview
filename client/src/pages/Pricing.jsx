@@ -31,7 +31,7 @@ function Pricing() {
     {
       id: "basic",
       name: "Starter Pack",
-      price: "₹50",
+      price: "₹10",
       credits: 250,
       description: "Great for focused practice and skill improvement.",
       features: [
@@ -44,7 +44,7 @@ function Pricing() {
     {
       id: "pro",
       name: "Pro Pack",
-      price: "₹100",
+      price: "₹50",
       credits: 650,
       description: "Best value for serious job preparation.",
       features: [
