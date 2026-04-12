@@ -1,22 +1,49 @@
 import mongoose from "mongoose";
 
-const userSchema = new mongoose.Schema({
-    name:{
-        type:String,
-        required:true
+const userSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
     },
-    email:{
-        type:String,
-        unique:true,
-        required:true
+
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
     },
-    credits:{
-        type:Number,
-        default:100
-    }
 
-}, {timestamps:true})
+    photo: {
+      type: String,
+      default: "",
+    },
 
-const User = mongoose.model("User" , userSchema)
+    provider: {
+      type: String,
+      default: "google", // google / email (future)
+    },
 
-export default User
+    credits: {
+      type: Number,
+      default: 100,
+    },
+
+    isPremium: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// 🔥 Prevent duplicate index error
+userSchema.index({ email: 1 }, { unique: true });
+
+const User = mongoose.model("User", userSchema);
+
+export default User;
