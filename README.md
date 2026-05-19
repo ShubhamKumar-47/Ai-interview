@@ -192,7 +192,7 @@ npm run dev
 
 ---
 
-## 📸 Screenshots (Add later)
+## 📸 Screenshots
 
 * Home Page
 
