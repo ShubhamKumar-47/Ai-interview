@@ -19,6 +19,8 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173",
   "https://ai-interview-shubh.vercel.app",
+  "https://mockverse.online",
+  "https://www.mockverse.online",
 ];
 
 // 🔐 CORS setup (IMPORTANT FIX)
