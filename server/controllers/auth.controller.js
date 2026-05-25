@@ -37,13 +37,20 @@ export const googleAuth = async (req, res) => {
       });
     }
 
+    const isProduction = process.env.NODE_ENV === "production";
+
     // 🍪 cookie config (VERY IMPORTANT FIX)
     const cookieOptions = {
       httpOnly: true,
-      secure: true, // ✅ always true in production (Vercel + Render)
-      sameSite: "none", // ✅ REQUIRED for cross-domain
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     };
+
+    if (process.env.COOKIE_DOMAIN) {
+      cookieOptions.domain = process.env.COOKIE_DOMAIN;
+    }
 
     res.cookie("token", token, cookieOptions);
 
@@ -65,11 +72,17 @@ export const googleAuth = async (req, res) => {
 // ✅ LOGOUT
 export const logOut = async (req, res) => {
   try {
+    const isProduction = process.env.NODE_ENV === "production";
     const cookieOptions = {
       httpOnly: true,
-      secure: true,
-      sameSite: "none",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      path: "/",
     };
+
+    if (process.env.COOKIE_DOMAIN) {
+      cookieOptions.domain = process.env.COOKIE_DOMAIN;
+    }
 
     res.clearCookie("token", cookieOptions);
 

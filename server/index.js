@@ -15,19 +15,20 @@ dotenv.config();
 
 const app = express();
 
-// ✅ Allowed origins (PRODUCTION READY)
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://ai-interview-shubh.vercel.app",
-  "https://mockverse.online",
-  "https://www.mockverse.online",
-];
+// ✅ Allowed origins (supports custom domains via env)
+const allowedOrigins = (
+  process.env.ALLOWED_ORIGINS ||
+  "http://localhost:5173,https://ai-interview-shubh.vercel.app,https://mockverse.online,https://www.mockverse.online"
+)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 // 🔐 CORS setup (IMPORTANT FIX)
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow server-to-server / Postman
+      // allow server-to-server / Postman / direct browser requests with no origin
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
