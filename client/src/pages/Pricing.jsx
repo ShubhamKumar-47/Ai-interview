@@ -57,16 +57,17 @@ function Pricing() {
     },
   ];
 
-  // 💳 HANDLE PAYMENT
   const handlePayment = async (plan) => {
     try {
       setLoadingPlan(plan.id);
 
       const amount =
-        plan.id === "basic" ? 10 :
-        plan.id === "pro" ? 50 : 0;
+        plan.id === "basic"
+          ? 10
+          : plan.id === "pro"
+          ? 50
+          : 0;
 
-      // 🔥 FIX 1: correct route name
       const { data } = await axios.post(
         `${ServerUrl}/api/payment/create-order`,
         {
@@ -74,13 +75,15 @@ function Pricing() {
           amount,
           credits: plan.credits,
         },
-        { withCredentials: true }
+        {
+          withCredentials: true,
+        }
       );
 
       const order = data.order;
 
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID, // ✅ correct key
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: order.amount,
         currency: "INR",
         name: "InterviewIQ.AI",
@@ -89,24 +92,47 @@ function Pricing() {
 
         handler: async function (response) {
           try {
-            // 🔥 FIX 2: send full response
+            // Verify payment
             const verifyRes = await axios.post(
               `${ServerUrl}/api/payment/verify`,
               {
-                ...response,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
               },
-              { withCredentials: true }
+              {
+                withCredentials: true,
+              }
             );
 
-            dispatch(setUserData(verifyRes.data.user));
+            if (!verifyRes.data.success) {
+              alert("Payment verification failed ❌");
+              return;
+            }
+
+            // Fetch updated user
+            const updatedUser = await axios.get(
+              `${ServerUrl}/api/user/current-user`,
+              {
+                withCredentials: true,
+              }
+            );
+
+            dispatch(setUserData(updatedUser.data));
 
             alert("Payment Successful 🎉 Credits Added!");
-            navigate("/");
 
+            window.location.href = "/";
           } catch (err) {
-            console.log(err);
+            console.error("Verify Error:", err);
             alert("Payment verification failed ❌");
           }
+        },
+
+        modal: {
+          ondismiss: function () {
+            setLoadingPlan(null);
+          },
         },
 
         theme: {
@@ -118,7 +144,7 @@ function Pricing() {
       rzp.open();
 
     } catch (error) {
-      console.log(error);
+      console.error("Payment Error:", error);
       alert("Payment failed ❌");
     } finally {
       setLoadingPlan(null);
@@ -127,9 +153,7 @@ function Pricing() {
 
   return (
     <div className="min-h-screen bg-linear-to-br from-gray-50 to-emerald-50 py-16 px-6">
-
       <div className="max-w-6xl mx-auto mb-14 flex items-start gap-4">
-
         <button
           onClick={() => navigate("/")}
           className="mt-2 p-3 rounded-full bg-white shadow hover:shadow-md transition"
@@ -148,7 +172,6 @@ function Pricing() {
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-
         {plans.map((plan) => {
           const isSelected = selectedPlan === plan.id;
 
@@ -158,12 +181,13 @@ function Pricing() {
               whileHover={!plan.default && { scale: 1.03 }}
               onClick={() => !plan.default && setSelectedPlan(plan.id)}
               className={`relative rounded-3xl p-8 transition-all duration-300 border 
-                ${isSelected
-                  ? "border-emerald-600 shadow-2xl bg-white"
-                  : "border-gray-200 bg-white shadow-md"}
+                ${
+                  isSelected
+                    ? "border-emerald-600 shadow-2xl bg-white"
+                    : "border-gray-200 bg-white shadow-md"
+                }
                 ${plan.default ? "cursor-default" : "cursor-pointer"}`}
             >
-
               {plan.badge && (
                 <div className="absolute top-6 right-6 bg-emerald-600 text-white text-xs px-4 py-1 rounded-full shadow">
                   {plan.badge}
@@ -209,6 +233,7 @@ function Pricing() {
                   disabled={loadingPlan === plan.id}
                   onClick={(e) => {
                     e.stopPropagation();
+
                     if (!isSelected) {
                       setSelectedPlan(plan.id);
                     } else {
@@ -216,18 +241,19 @@ function Pricing() {
                     }
                   }}
                   className={`w-full mt-8 py-3 rounded-xl font-semibold transition 
-                  ${isSelected
-                    ? "bg-emerald-600 text-white hover:opacity-90"
-                    : "bg-gray-100 text-gray-700 hover:bg-emerald-50"}`}
+                    ${
+                      isSelected
+                        ? "bg-emerald-600 text-white hover:opacity-90"
+                        : "bg-gray-100 text-gray-700 hover:bg-emerald-50"
+                    }`}
                 >
                   {loadingPlan === plan.id
                     ? "Processing..."
                     : isSelected
-                      ? "Proceed to Pay"
-                      : "Select Plan"}
+                    ? "Proceed to Pay"
+                    : "Select Plan"}
                 </button>
               )}
-
             </Motion.div>
           );
         })}
