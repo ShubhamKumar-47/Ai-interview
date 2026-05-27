@@ -9,10 +9,9 @@ function Footer() {
             <div className='bg-black text-white p-2 rounded-lg'><BsRobot size={16}/></div>
             <h2 className='font-semibold'>MockVerse.Online</h2>
         </div>
-        <p className='text-gray-500 text-sm max-w-xl mx-auto'>
-  AI-powered interview preparation platform designed to improve
-          communication skills, technical depth and professional confidence.
-        </p>
+        <p className="text-gray-500 text-sm max-w-xl mx-auto text-center">
+  AI-powered interview preparation platform designed to improve communication skills, technical depth and professional confidence. © {new Date().getFullYear()} Shubham Kumar ✨
+</p>
 
 
       </div>
