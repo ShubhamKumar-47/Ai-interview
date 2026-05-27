@@ -10,7 +10,7 @@ function Footer() {
             <h2 className='font-semibold'>MockVerse.Online</h2>
         </div>
         <p className="text-gray-500 text-sm max-w-xl mx-auto text-center">
-  AI-powered interview preparation platform designed to improve communication skills, technical depth and professional confidence. © {new Date().getFullYear()} Shubham Kumar ✨
+  AI-powered interview preparation platform designed to improve communication skills, technical depth and professional confidence.<br/> © {new Date().getFullYear()} Shubham Kumar ✨
 </p>
 
 
