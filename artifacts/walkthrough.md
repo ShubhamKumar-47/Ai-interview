@@ -78,6 +78,11 @@ During actual local runs and interactive test loops, the following integration i
 *   **Fix**: Installed and imported `helmet` security headers configuration (CORS policies alignment, CSP exclusions for Razorpay scripts) and `express-rate-limit` (restricting IP limits to 100 requests per 15 minutes to defend against brute force requests).
 *   **Verification**: Nodemon compiles successfully and connects to MongoDB database with no errors.
 
+### 10. Critical Bug: Interview Ends Prematurely After First Question
+*   **Root Cause**: React's `questionsList` state updates asynchronously. When `submitAnswer()` pushed a new question and immediately called `handleNext()`, `handleNext()` evaluated the completion condition `currentIndex + 1 >= questionsList.length` using the stale state length (`1 >= 1`). This triggered a premature redirect to the Report page immediately after Question 1.
+*   **Fix**: Introduced a synchronous React Ref `questionsListRef` to store the questions array. In `submitAnswer()`, the next question is synchronously pushed into `questionsListRef.current` before calling `handleNext()`. In `handleNext()`, the completion check is evaluated against `questionsListRef.current.length`, which is guaranteed to be fresh and synchronized.
+*   **Verification**: Complete mock runs verify that Question 1 proceeds to Question 2 of 5, resetting timers and continuing the interview flow cleanly.
+
 ---
 
 ## 🏁 Final QA Status Checklist
@@ -91,4 +96,5 @@ During actual local runs and interactive test loops, the following integration i
 - **Conversation Response Latency**: Reduced percieved conversation response delay by 66% (down to ~1.75s).
 - **Production security & rate limits**: Active (Helmet secure headers, express-rate-limit).
 - **Progressive Web App (PWA) & SEO**: Integrated (`manifest.json`, Service Worker caching, og-tags, `robots.txt`, `sitemap.xml`).
+- **Multi-Question Flow**: Verified that interviews correctly progress through configured question iterations (Q1 -> Q2 -> Q3 -> ... -> Q5) with zero early termination.
 - **Production Build**: Vite build compiles successfully.

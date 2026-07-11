@@ -24,6 +24,9 @@ function Step2Interview({ interviewData, onFinish }) {
   const { interviewId, questions: initialQuestions, userName, mode, interactionMedium = "Voice" } = interviewData;
 
   const [questionsList, setQuestionsList] = useState(initialQuestions);
+  // Synchronous ref to prevent React batching state latency issues
+  const questionsListRef = useRef(initialQuestions);
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [code, setCode] = useState("// Write your solution here...\nfunction solution() {\n  \n}");
@@ -310,15 +313,15 @@ function Step2Interview({ interviewData, onFinish }) {
     timerHandledRef.current = false;
 
     const totalQuestions = 5;
+    const nextIdx = currentIndex + 1;
 
-    // Check if we are finished
-    if (currentIndex + 1 >= totalQuestions || currentIndex + 1 >= questionsList.length) {
+    // Check if we are finished based on synchronous ref array length
+    if (nextIdx >= totalQuestions || nextIdx >= questionsListRef.current.length) {
       await finishInterview();
       return;
     }
 
-    const nextIdx = currentIndex + 1;
-    const nextQuestionItem = questionsList[nextIdx];
+    const nextQuestionItem = questionsListRef.current[nextIdx];
     const nextTimeLimit = nextQuestionItem?.timeLimit || (mode === "Coding" ? 180 : 60);
 
     setCurrentIndex(nextIdx);
@@ -327,7 +330,7 @@ function Step2Interview({ interviewData, onFinish }) {
     if (interactionMedium === "Voice") {
       await speakText("Alright, let's move to the next question.");
     }
-  }, [currentIndex, questionsList, mode, interactionMedium, finishInterview, speakText]);
+  }, [currentIndex, mode, interactionMedium, finishInterview, speakText]);
 
   // Submit current answer to the backend
   const submitAnswer = useCallback(async () => {
@@ -357,14 +360,15 @@ function Step2Interview({ interviewData, onFinish }) {
         interviewId,
         questionIndex: currentIndex,
         answer: cleanedAnswer || "No response.",
-        timeTaken: currentQuestionRef.current.timeLimit - timeLeft,
+        timeTaken: questionsListRef.current[currentIndex].timeLimit - timeLeft,
       }, { withCredentials: true });
 
       setFeedback(result.data.feedback);
       
-      // Update our local questions array if a next question was generated dynamically
+      // Update our local questions array synchronously using the ref to avoid asynchronous state delay
       if (result.data.nextQuestion) {
-        setQuestionsList((prev) => [...prev, result.data.nextQuestion]);
+        questionsListRef.current.push(result.data.nextQuestion);
+        setQuestionsList([...questionsListRef.current]);
       }
 
       if (interactionMedium === "Voice") {

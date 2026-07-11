@@ -90,6 +90,11 @@ MockVerse is a premium, state-of-the-art AI mock interview platform featuring st
 *   **Fix Applied**: Integrated `helmet` middleware to remove trace fingerprints and secure frame options, and added `express-rate-limit` limiting API requests to 100 queries per 15 minutes per IP.
 *   **Status**: **RESOLVED** (Standard security audits pass cleanly).
 
+### Issue L: Early Termination Bug (Interview ends after first question)
+*   **Root Cause**: React's `questionsList` state updates asynchronously. When `submitAnswer()` pushed a new question and immediately called `handleNext()`, `handleNext()` evaluated the completion condition `currentIndex + 1 >= questionsList.length` using the stale state length (`1 >= 1`). This triggered a premature redirect to the Report page immediately after Question 1.
+*   **Fix Applied**: Introduced a synchronous React Ref `questionsListRef` to store the questions array. In `submitAnswer()`, the next question is synchronously pushed into `questionsListRef.current` before calling `handleNext()`. In `handleNext()`, the completion check is evaluated against `questionsListRef.current.length`, which is guaranteed to be fresh and synchronized.
+*   **Status**: **RESOLVED** (Interviews progress correctly through all 5 configured questions).
+
 ---
 
 ## 3. PASS/FAIL Functional Verification Matrix
