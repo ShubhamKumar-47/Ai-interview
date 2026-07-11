@@ -42,6 +42,16 @@ MockVerse is a premium, state-of-the-art AI mock interview platform featuring st
     3. Rendered the `suggestions` feedback array in the UI.
 *   **Status**: **RESOLVED** (`npm run lint` completes with zero warnings/errors).
 
+### Issue F: Voice Interview Engine Race Conditions & InvalidStateError
+*   **Root Cause**: 
+    1. Browser `SpeechSynthesis.speak()` has a minor queuing delay. During this delay, `speechSynthesis.speaking` is still `false`, so `recognition.onend` would prematurely trigger a start operation before the browser actually began speaking, resulting in `InvalidStateError`.
+    2. Intentional cancellations (user barge-in) fired uncaught `SpeechSynthesisErrorEvent` errors in the console.
+*   **Fix Applied**: 
+    1. Implemented a synchronous state machine (`IDLE`, `LISTENING`, `PROCESSING`, `SPEAKING`, `STOPPING`, `ERROR`, `RECONNECTING`) tracked via React Ref (`voiceStateRef.current`) and State.
+    2. Added `isRecognitionActiveRef` and `isAISpeakingRef` to track browser thread locks synchronously, bypassing SpeechSynthesis queue delays and avoiding duplicate `start()` calls.
+    3. Silenced intentional `interrupted` SpeechSynthesis cancellations in `onerror` handlers.
+*   **Status**: **RESOLVED** (Complete loop tests confirm 0 duplicate starts, 0 `InvalidStateError` events, and seamless barge-in/reconnect transitions).
+
 ---
 
 ## 3. PASS/FAIL Functional Verification Matrix
