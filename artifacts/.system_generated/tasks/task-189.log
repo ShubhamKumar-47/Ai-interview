@@ -1,0 +1,15 @@
+
+> client@0.0.0 dev
+> vite
+
+
+  VITE v7.3.1  ready in 1084 ms
+
+  ➜  Local:   http://localhost:5173/
+2:11:12 PM [vite] (client) hmr update /src/index.css, /src/components/CodingWorkspace.jsx
+2:11:12 PM [vite] (client) hmr update /src/index.css, /src/components/CodingWorkspace.jsx
+2:11:46 PM [vite] (client) hmr update /src/index.css, /src/components/Step2Interview.jsx
+2:11:52 PM [vite] (client) hmr update /src/index.css, /src/components/Step3Report.jsx
+2:12:10 PM [vite] (client) hmr update /src/index.css, /src/components/CodingWorkspace.jsx
+2:23:29 PM [vite] (client) hmr update /src/App.jsx, /src/index.css
+2:23:54 PM [vite] (client) hmr update /src/index.css, /src/components/Step2Interview.jsx

@@ -1,0 +1,47 @@
+
+> client@0.0.0 lint
+> eslint .
+
+
+D:\Ai-interview\client\src\components\CodingWorkspace.jsx
+  14:3  error  'timeLeft' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        no-unused-vars
+  15:3  error  'totalTime' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       no-unused-vars
+  33:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  31 |   useEffect(() => {
+  32 |     const lines = code.split("\n").length;
+> 33 |     setLineCount(Math.max(lines, 1));
+     |     ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  34 |   }, [code]);
+  35 |
+  36 |   // Support Tab key override inside the editor  react-hooks/set-state-in-effect
+
+D:\Ai-interview\client\src\components\Step2Interview.jsx
+   31:10  error    'ttsSupported' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                 no-unused-vars
+  120:20  error    'e' is defined but never used                                                                                                no-unused-vars
+  120:23  error    Empty block statement                                                                                                        no-empty
+  163:6   warning  React Hook useCallback has a missing dependency: 'startMic'. Either include it or remove the dependency array                react-hooks/exhaustive-deps
+  172:16  error    'err' is defined but never used                                                                                              no-unused-vars
+  183:16  error    'err' is defined but never used                                                                                              no-unused-vars
+  183:21  error    Empty block statement                                                                                                        no-empty
+  293:11  error    'interimTranscript' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                            no-unused-vars
+  328:20  error    'e' is defined but never used                                                                                                no-unused-vars
+  328:23  error    Empty block statement                                                                                                        no-empty
+  344:16  error    'e' is defined but never used                                                                                                no-unused-vars
+  344:19  error    Empty block statement                                                                                                        no-empty
+  346:6   warning  React Hook useEffect has missing dependencies: 'isMicOn' and 'startMic'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  373:6   warning  React Hook useEffect has a missing dependency: 'currentQuestion'. Either include it or remove the dependency array           react-hooks/exhaustive-deps
+  422:6   warning  React Hook useEffect has a missing dependency: 'submitAnswer'. Either include it or remove the dependency array              react-hooks/exhaustive-deps
+  428:6   warning  React Hook useEffect has a missing dependency: 'submitAnswer'. Either include it or remove the dependency array              react-hooks/exhaustive-deps
+
+D:\Ai-interview\client\src\components\Step3Report.jsx
+  35:5  error  'suggestions' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+✖ 20 problems (15 errors, 5 warnings)
+

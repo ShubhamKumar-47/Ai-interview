@@ -1,0 +1,11 @@
+# Test Checklist
+- [x] Navigate to http://localhost:5173/ and verify landing page.
+- [x] Click "Start Interview" to navigate to /auth.
+- [x] Click "Developer Sandbox Login".
+- [x] Verify login success (credits displayed, redirect).
+- [x] Navigate to /interview.
+- [x] Select Coding Interview & Chat mode, then start.
+- [x] Type Javascript code in editor.
+- [x] Submit Code Solution.
+- [x] Wait for AI feedback and verify.
+- [x] Check for errors.

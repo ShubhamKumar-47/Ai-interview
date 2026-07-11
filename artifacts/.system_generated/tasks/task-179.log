@@ -1,0 +1,27 @@
+[nodemon] 3.1.11
+[nodemon] to restart at any time, enter `rs`
+[nodemon] watching path(s): *.*
+[nodemon] watching extensions: js,mjs,cjs,json
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected

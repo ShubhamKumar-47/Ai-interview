@@ -1,0 +1,28 @@
+
+> client@0.0.0 build
+> vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 1425 modules transformed.
+✗ Build failed in 7.60s
+error during build:
+src/components/Step3Report.jsx (2:60): "FaMapSign" is not exported by "node_modules/react-icons/fa/index.mjs", imported by "src/components/Step3Report.jsx".
+file: D:/Ai-interview/client/src/components/Step3Report.jsx:2:60
+
+1: import React from 'react'
+2: import { FaArrowLeft, FaCheckCircle, FaExclamationTriangle, FaMapSign, FaUserCheck, FaDownload } from 'react-icons/fa';
+                                                               ^
+3: import { useNavigate } from 'react-router-dom';
+4: import { motion as Motion } from "motion/react"
+
+    at getRollupError (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/parseAst.js:402:41)
+    at error (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/parseAst.js:398:42)
+    at Module.error (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/node-entry.js:17040:16)
+    at Module.traceVariable (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/node-entry.js:17452:29)
+    at ModuleScope.findVariable (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/node-entry.js:15070:39)
+    at FunctionScope.findVariable (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/node-entry.js:5673:38)
+    at FunctionBodyScope.findVariable (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/node-entry.js:5673:38)
+    at Identifier.bind (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/node-entry.js:5447:40)
+    at CallExpression.bind (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/node-entry.js:2825:28)
+    at CallExpression.bind (file:///D:/Ai-interview/client/node_modules/rollup/dist/es/shared/node-entry.js:12179:15)

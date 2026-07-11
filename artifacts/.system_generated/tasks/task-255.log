@@ -1,0 +1,11 @@
+
+> client@0.0.0 lint
+> eslint .
+
+
+D:\Ai-interview\client\src\components\CodingWorkspace.jsx
+  1:25  error  'useState' is defined but never used. Allowed unused vars must match /^[A-Z_]/u   no-unused-vars
+  1:35  error  'useEffect' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+✖ 2 problems (2 errors, 0 warnings)
+

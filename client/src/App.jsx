@@ -9,6 +9,7 @@ import InterviewPage from './pages/InterviewPage'
 import InterviewHistory from './pages/InterviewHistory'
 import Pricing from './pages/Pricing'
 import InterviewReport from './pages/InterviewReport'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // 🔥 Firebase
 import { auth } from "./utils/firebase"
@@ -67,14 +68,16 @@ function App() {
   }, [dispatch])
 
   return (
-    <Routes>
-      <Route path='/' element={<Home />} />
-      <Route path='/auth' element={<Auth />} />
-      <Route path='/interview' element={<InterviewPage />} />
-      <Route path='/history' element={<InterviewHistory />} />
-      <Route path='/pricing' element={<Pricing />} />
-      <Route path='/report/:id' element={<InterviewReport />} />
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        <Route path='/' element={<Home />} />
+        <Route path='/auth' element={<Auth />} />
+        <Route path='/interview' element={<InterviewPage />} />
+        <Route path='/history' element={<InterviewHistory />} />
+        <Route path='/pricing' element={<Pricing />} />
+        <Route path='/report/:id' element={<InterviewReport />} />
+      </Routes>
+    </ErrorBoundary>
   )
 }
 

@@ -45,16 +45,6 @@ function Step2Interview({ interviewData, onFinish }) {
 
   const currentQuestion = questionsList[currentIndex];
 
-  // Sync refs with state values
-  useEffect(() => {
-    isMicOnRef.current = isMicOn;
-    isAIPlayingRef.current = isAIPlaying;
-    micStatusRef.current = micStatus;
-    isSubmittingRef.current = isSubmitting;
-    feedbackRef.current = feedback;
-    currentQuestionRef.current = questionsList[currentIndex];
-  }, [isMicOn, isAIPlaying, micStatus, isSubmitting, feedback, questionsList, currentIndex]);
-
   const videoSource = voiceGender === "male" ? maleVideo : femaleVideo;
 
   // Cleanup transcripts: remove filler words & duplicates
@@ -75,6 +65,30 @@ function Step2Interview({ interviewData, onFinish }) {
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
     return cleaned;
   };
+
+  // STT start/stop handlers
+  const startMic = useCallback(() => {
+    if (interactionMedium !== "Voice") return;
+    if (recognitionRef.current && !isAIPlayingRef.current) {
+      try {
+        setMicStatus("Listening");
+        recognitionRef.current.start();
+      } catch (err) {
+        console.warn("Speech start failed:", err);
+      }
+    }
+  }, [interactionMedium]);
+
+  const stopMic = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+        setMicStatus("Idle");
+      } catch (err) {
+        console.warn("Speech stop failed:", err);
+      }
+    }
+  }, []);
 
   // TTS implementation
   const speakText = useCallback((text) => {
@@ -163,29 +177,115 @@ function Step2Interview({ interviewData, onFinish }) {
     });
   }, [selectedVoice, interactionMedium, startMic]);
 
-  // STT start/stop handlers
-  const startMic = useCallback(() => {
-    if (interactionMedium !== "Voice") return;
-    if (recognitionRef.current && !isAIPlayingRef.current) {
-      try {
-        setMicStatus("Listening");
-        recognitionRef.current.start();
-      } catch (err) {
-        console.warn("Speech start failed:", err);
-      }
+  // Microphone toggle button action
+  const toggleMic = () => {
+    if (micStatus === "Permission Denied") {
+      alert("Microphone permission was denied. Please check your browser settings.");
+      return;
     }
-  }, [interactionMedium]);
 
-  const stopMic = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-        setMicStatus("Idle");
-      } catch (err) {
-        console.warn("Speech stop failed:", err);
-      }
+    if (isMicOn) {
+      stopMic();
+      setIsMicOn(false);
+    } else {
+      setIsMicOn(true);
+      startMic();
     }
-  }, []);
+  };
+
+  // Submit current answer to the backend
+  const submitAnswer = useCallback(async () => {
+    if (isSubmittingRef.current) return;
+    
+    stopMic();
+    setIsSubmitting(true);
+    setMicStatus("Processing");
+
+    const submissionAnswer = mode === "Coding" ? code : answer;
+    const cleanedAnswer = cleanTranscript(submissionAnswer);
+
+    try {
+      const result = await axios.post(ServerUrl + "/api/interview/submit-answer", {
+        interviewId,
+        questionIndex: currentIndex,
+        answer: cleanedAnswer,
+        timeTaken: currentQuestionRef.current.timeLimit - timeLeft,
+      }, { withCredentials: true });
+
+      setFeedback(result.data.feedback);
+      
+      // Update our local questions array if a next question was generated dynamically
+      if (result.data.nextQuestion) {
+        setQuestionsList((prev) => [...prev, result.data.nextQuestion]);
+      }
+
+      if (interactionMedium === "Voice") {
+        await speakText(result.data.feedback);
+      }
+    } catch (error) {
+      console.error("Answer submission failed:", error);
+      alert("Submission failed. Retrying in typing mode.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, speakText, stopMic]);
+
+  // Complete the interview and render reports
+  const finishInterview = async () => {
+    stopMic();
+    setIsMicOn(false);
+    setIsSubmitting(true);
+    setMicStatus("Processing");
+
+    try {
+      const result = await axios.post(ServerUrl + "/api/interview/finish", { interviewId }, { withCredentials: true });
+      onFinish(result.data);
+    } catch (error) {
+      console.error("Failed to finish interview:", error);
+      alert("Failed to compile final report. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Move to next question or trigger completion
+  const handleNext = async () => {
+    setAnswer("");
+    // If coding mode, keep editor contents or reset to a starter template for next problem
+    setCode("// Write your solution here...\nfunction solution() {\n  \n}");
+    setFeedback("");
+
+    const totalQuestions = 5;
+
+    // Check if we are finished
+    if (currentIndex + 1 >= totalQuestions || currentIndex + 1 >= questionsList.length) {
+      finishInterview();
+      return;
+    }
+
+    const nextIdx = currentIndex + 1;
+    const nextQuestionItem = questionsList[nextIdx];
+    const nextTimeLimit = nextQuestionItem?.timeLimit || (mode === "Coding" ? 180 : 60);
+
+    setCurrentIndex(nextIdx);
+    setTimeLeft(nextTimeLimit);
+
+    if (interactionMedium === "Voice") {
+      await speakText("Alright, let's move to the next question.");
+    }
+  };
+
+  /* ----------------- REACT USEEFFECT LIFECYCLE HOOKS ----------------- */
+
+  // Sync refs with state values
+  useEffect(() => {
+    isMicOnRef.current = isMicOn;
+    isAIPlayingRef.current = isAIPlaying;
+    micStatusRef.current = micStatus;
+    isSubmittingRef.current = isSubmitting;
+    feedbackRef.current = feedback;
+    currentQuestionRef.current = questionsList[currentIndex];
+  }, [isMicOn, isAIPlaying, micStatus, isSubmitting, feedback, questionsList, currentIndex]);
 
   // Initialize TTS voices
   useEffect(() => {
@@ -430,103 +530,6 @@ function Step2Interview({ interviewData, onFinish }) {
     submitAnswer();
   }, [timeLeft, isIntroPhase, currentQuestion, isSubmitting, feedback, submitAnswer]);
 
-  // Microphone toggle button action
-  const toggleMic = () => {
-    if (micStatus === "Permission Denied") {
-      alert("Microphone permission was denied. Please check your browser settings.");
-      return;
-    }
-
-    if (isMicOn) {
-      stopMic();
-      setIsMicOn(false);
-    } else {
-      setIsMicOn(true);
-      startMic();
-    }
-  };
-
-  // Submit current answer to the backend
-  const submitAnswer = useCallback(async () => {
-    if (isSubmittingRef.current) return;
-    
-    stopMic();
-    setIsSubmitting(true);
-    setMicStatus("Processing");
-
-    const submissionAnswer = mode === "Coding" ? code : answer;
-    const cleanedAnswer = cleanTranscript(submissionAnswer);
-
-    try {
-      const result = await axios.post(ServerUrl + "/api/interview/submit-answer", {
-        interviewId,
-        questionIndex: currentIndex,
-        answer: cleanedAnswer,
-        timeTaken: currentQuestionRef.current.timeLimit - timeLeft,
-      }, { withCredentials: true });
-
-      setFeedback(result.data.feedback);
-      
-      // Update our local questions array if a next question was generated dynamically
-      if (result.data.nextQuestion) {
-        setQuestionsList((prev) => [...prev, result.data.nextQuestion]);
-      }
-
-      if (interactionMedium === "Voice") {
-        await speakText(result.data.feedback);
-      }
-    } catch (error) {
-      console.error("Answer submission failed:", error);
-      alert("Submission failed. Retrying in typing mode.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, speakText, stopMic]);
-
-  // Move to next question or trigger completion
-  const handleNext = async () => {
-    setAnswer("");
-    // If coding mode, keep editor contents or reset to a starter template for next problem
-    setCode("// Write your solution here...\nfunction solution() {\n  \n}");
-    setFeedback("");
-
-    const totalQuestions = 5;
-
-    // Check if we are finished
-    if (currentIndex + 1 >= totalQuestions || currentIndex + 1 >= questionsList.length) {
-      finishInterview();
-      return;
-    }
-
-    const nextIdx = currentIndex + 1;
-    const nextQuestionItem = questionsList[nextIdx];
-    const nextTimeLimit = nextQuestionItem?.timeLimit || (mode === "Coding" ? 180 : 60);
-
-    setCurrentIndex(nextIdx);
-    setTimeLeft(nextTimeLimit);
-
-    if (interactionMedium === "Voice") {
-      await speakText("Alright, let's move to the next question.");
-    }
-  };
-
-  // Complete the interview and render reports
-  const finishInterview = async () => {
-    stopMic();
-    setIsMicOn(false);
-    setIsSubmitting(true);
-    setMicStatus("Processing");
-
-    try {
-      const result = await axios.post(ServerUrl + "/api/interview/finish", { interviewId }, { withCredentials: true });
-      onFinish(result.data);
-    } catch (error) {
-      console.error("Failed to finish interview:", error);
-      alert("Failed to compile final report. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   /* ----------------- RENDER CODING WORKSPACE ----------------- */
   if (mode === "Coding") {
@@ -556,8 +559,6 @@ function Step2Interview({ interviewData, onFinish }) {
             isSubmitting={isSubmitting}
             feedback={feedback}
             onNext={handleNext}
-            timeLeft={timeLeft}
-            totalTime={currentQuestion?.timeLimit}
             currentIndex={currentIndex}
             totalQuestions={5}
           />
