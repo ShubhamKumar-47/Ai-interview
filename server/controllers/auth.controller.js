@@ -99,3 +99,51 @@ export const logOut = async (req, res) => {
     });
   }
 };
+
+// ✅ DEVELOPER/QA LOGIN (ONLY FOR DEV MODE OR TESTING ENVIRONMENT)
+export const devLogin = async (req, res) => {
+  try {
+    const isProduction = process.env.NODE_ENV === "production";
+    
+    // Find or create developer test user
+    let user = await User.findOne({ email: "developer@mockverse.online" });
+    if (!user) {
+      user = await User.create({
+        name: "QA Developer",
+        email: "developer@mockverse.online",
+        photo: "",
+        provider: "dev",
+        credits: 999,
+      });
+    }
+
+    const token = genToken(user._id);
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    };
+
+    if (process.env.COOKIE_DOMAIN) {
+      cookieOptions.domain = process.env.COOKIE_DOMAIN;
+    }
+
+    res.cookie("token", token, cookieOptions);
+
+    return res.status(200).json({
+      success: true,
+      message: "Developer login successful",
+      user,
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Dev login error",
+      error: error.message,
+    });
+  }
+};

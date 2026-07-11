@@ -88,6 +88,28 @@ function Auth({isModel = false}) {
             setIsLoading(false)
         }
     }
+
+    const handleDevAuth = async () => {
+        setAuthError(null)
+        setIsLoading(true)
+        try {
+            console.log("Starting Developer authentication bypass...")
+            const result = await axios.post(
+                ServerUrl + "/api/auth/dev-login", 
+                {}, 
+                { withCredentials: true }
+            )
+            console.log("Developer login successful, user:", result.data.user)
+            dispatch(setUserData(result.data.user))
+            navigate("/")
+        } catch (error) {
+            console.error("Developer login error:", error)
+            setAuthError(error?.response?.data?.message || error.message || "Dev login failed")
+            dispatch(setUserData(null))
+        } finally {
+            setIsLoading(false)
+        }
+    }
   return (
     <div className={`
       w-full 
@@ -130,17 +152,29 @@ function Auth({isModel = false}) {
               </div>
             )}
 
-            <Motion.button 
-            onClick={handleGoogleAuth}
-            whileHover={{opacity:0.9 , scale:1.03}}
-            whileTap={{opacity:1 , scale:0.98}}
-            disabled={isLoading}
-            className='w-full flex items-center justify-center gap-3 py-3 bg-black text-white rounded-full shadow-md disabled:opacity-60'>
-                <FcGoogle size={20}/>
-                {isLoading ? "Signing in..." : "Continue with Google"}
+            <div className="space-y-4">
+              <Motion.button 
+              onClick={handleGoogleAuth}
+              whileHover={{opacity:0.9 , scale:1.03}}
+              whileTap={{opacity:1 , scale:0.98}}
+              disabled={isLoading}
+              className='w-full flex items-center justify-center gap-3 py-3 bg-black text-white rounded-full shadow-md disabled:opacity-60 cursor-pointer font-semibold'>
+                  <FcGoogle size={20}/>
+                  {isLoading ? "Signing in..." : "Continue with Google"}
+              </Motion.button>
 
-   
-            </Motion.button>
+              {!import.meta.env.PROD && (
+              <Motion.button 
+              onClick={handleDevAuth}
+              whileHover={{opacity:0.9 , scale:1.03}}
+              whileTap={{opacity:1 , scale:0.98}}
+              disabled={isLoading}
+              className='w-full flex items-center justify-center gap-3 py-3 bg-emerald-600 text-white rounded-full shadow-md disabled:opacity-60 cursor-pointer font-semibold'>
+                  <BsRobot size={20}/>
+                  {isLoading ? "Bypassing Auth..." : "Developer Sandbox Login"}
+              </Motion.button>
+              )}
+            </div>
         </Motion.div>
 
       

@@ -29,8 +29,13 @@ const interviewSchema = new mongoose.Schema({
     },
     mode:{
         type:String,
-        enum:["HR" ,"Technical"],
+        enum:["HR" ,"Technical", "Coding"],
         required:true
+    },
+    interactionMedium:{
+        type:String,
+        enum:["Voice", "Chat"],
+        default:"Voice"
     },
     resumeText:{
      type:String
@@ -38,6 +43,18 @@ const interviewSchema = new mongoose.Schema({
     questions:[questionsSchema],
 
     finalScore: { type: Number, default: 0 },
+    technicalScore: { type: Number, default: 0 },
+    communicationScore: { type: Number, default: 0 },
+    problemSolvingScore: { type: Number, default: 0 },
+    confidenceScore: { type: Number, default: 0 },
+    codingScore: { type: Number, default: 0 },
+
+    strengths: { type: [String], default: [] },
+    weaknesses: { type: [String], default: [] },
+    mistakes: { type: [String], default: [] },
+    suggestions: { type: [String], default: [] },
+    roadmap: { type: [String], default: [] },
+    hiringRecommendation: { type: String, default: "" },
 
     status: {
       type: String,

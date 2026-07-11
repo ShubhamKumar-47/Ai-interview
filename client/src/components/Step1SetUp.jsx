@@ -18,6 +18,7 @@ function Step1SetUp({ onStart }) {
     const [role, setRole] = useState("");
     const [experience, setExperience] = useState("");
     const [mode, setMode] = useState("Technical");
+    const [interactionMedium, setInteractionMedium] = useState("Voice");
     const [resumeFile, setResumeFile] = useState(null);
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
@@ -57,7 +58,7 @@ function Step1SetUp({ onStart }) {
     const handleStart = async () => {
         setLoading(true)
         try {
-           const result = await axios.post(ServerUrl + "/api/interview/generate-questions" , {role, experience, mode , resumeText, projects, skills } , {withCredentials:true}) 
+           const result = await axios.post(ServerUrl + "/api/interview/generate-questions" , {role, experience, mode , interactionMedium, resumeText, projects, skills } , {withCredentials:true}) 
            console.log(result.data)
            if(userData){
             dispatch(setUserData({...userData , credits:result.data.creditsLeft}))
@@ -170,8 +171,20 @@ function Step1SetUp({ onStart }) {
 
                             <option value="Technical">Technical Interview</option>
                             <option value="HR">HR Interview</option>
+                            <option value="Coding">Coding Interview</option>
 
                         </select>
+
+                        <div className="space-y-1">
+                            <label className="text-xs font-semibold text-gray-500 block">Interaction Medium</label>
+                            <select value={interactionMedium}
+                                onChange={(e) => setInteractionMedium(e.target.value)}
+                                className='w-full py-3 px-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition'>
+
+                                <option value="Voice">Smart Voice Interaction</option>
+                                <option value="Chat">Text Chat / Typing Only</option>
+                            </select>
+                        </div>
 
                         {!analysisDone && (
                             <Motion.div
