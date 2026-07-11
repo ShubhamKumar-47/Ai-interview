@@ -52,6 +52,18 @@ MockVerse is a premium, state-of-the-art AI mock interview platform featuring st
     3. Silenced intentional `interrupted` SpeechSynthesis cancellations in `onerror` handlers.
 *   **Status**: **RESOLVED** (Complete loop tests confirm 0 duplicate starts, 0 `InvalidStateError` events, and seamless barge-in/reconnect transitions).
 
+### Issue G: Timer Expiration progression freeze & Stale closures
+*   **Root Cause**: 
+    1. Timer countdown occurred during speech synthesis of the question, giving candidates reduced time limits.
+    2. Answer evaluation feedback required manual click intervention on the "Next Question" button to proceed.
+    3. Lack of explicit locks (`timerHandledRef`) created race conditions where double submissions triggered duplicate API requests.
+*   **Fix Applied**:
+    1. Synchronized timer countdown with the `voiceStateRef.current` state machine; the countdown pauses while the AI is speaking the question.
+    2. Implemented automated progression. Once the evaluation feedback is completed (Voice TTS ends, or 5 seconds elapse in Chat/Coding mode), `handleNext` is triggered automatically.
+    3. Engaged `timerHandledRef` lock to prevent duplicate timeout evaluations, and refactored callback hooks (`finishInterview`, `handleNext`, and `submitAnswer`) to use `useCallback` to avoid stale closures.
+    4. Integrated a premium glowing AI glassmorphic scanner overlay that covers the viewport during submission/loading states and blocks inputs.
+*   **Status**: **RESOLVED** (Timer expiry automatically submits answers and advances seamlessly without manual intervention).
+
 ---
 
 ## 3. PASS/FAIL Functional Verification Matrix

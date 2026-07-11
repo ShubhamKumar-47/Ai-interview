@@ -43,7 +43,17 @@ During actual local runs and interactive test loops, the following integration i
     1. Implemented a synchronous state machine (`IDLE`, `LISTENING`, `PROCESSING`, `SPEAKING`, `STOPPING`, `ERROR`, `RECONNECTING`) tracked via React Ref (`voiceStateRef.current`) and State.
     2. Added `isRecognitionActiveRef` and `isAISpeakingRef` to track browser thread locks synchronously, bypassing SpeechSynthesis queue delays and avoiding duplicate `start()` calls.
     3. Silenced intentional `interrupted` SpeechSynthesis cancellations in `onerror` handlers.
-*   **Verification**: Complete loop tests confirm 0 duplicate starts, 0 `InvalidStateError` events, and seamless barge-in/reconnect transitions.
+### 5. Automated Timeout Progression & Stale Closures
+*   **Root Cause**: 
+    1. Timer countdown occurred during speech synthesis of the question, giving candidates reduced time limits.
+    2. Answer evaluation feedback required manual click intervention on the "Next Question" button to proceed.
+    3. Lack of explicit locks (`timerHandledRef`) created race conditions where double submissions triggered duplicate API requests.
+*   **Fix**:
+    1. Synchronized timer countdown with the `voiceStateRef.current` state machine; the countdown pauses while the AI is speaking the question.
+    2. Implemented automated progression. Once the evaluation feedback is completed (Voice TTS ends, or 5 seconds elapse in Chat/Coding mode), `handleNext` is triggered automatically.
+    3. Engaged `timerHandledRef` lock to prevent duplicate timeout evaluations, and refactored callback hooks (`finishInterview`, `handleNext`, and `submitAnswer`) to use `useCallback` to avoid stale closures.
+    4. Integrated a premium glowing AI glassmorphic scanner overlay that covers the viewport during submission/loading states and blocks inputs.
+*   **Verification**: Tested Voice, Chat, and Coding rounds; timer expiry auto-submits correct code/transcripts, shows the glowing overlay, and advances questions automatically with zero manual clicks required.
 
 ---
 
@@ -54,4 +64,5 @@ During actual local runs and interactive test loops, the following integration i
 - **Authentication**: Google OAuth configured, Developer Sandbox Bypass Login added for sandbox testing.
 - **Dynamic Coding Round**: Verified split-screen rendering, editor text typing, custom Tab-key indenting, and dynamic feedback loops.
 - **Voice State Machine**: Verified race-condition free, mutually exclusive speech engine loops.
-- **Production Build**: Vite build compiles 1426 modules successfully in `12.06s`.
+- **Automated Timeout Progression**: Verified zero-click automatic question transition, countdown speech synchronization, and loading overlay.
+- **Production Build**: Vite build compiles 1426 modules successfully.

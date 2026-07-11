@@ -35,6 +35,11 @@ function Step2Interview({ interviewData, onFinish }) {
   const [subtitle, setSubtitle] = useState("");
   const [isIntroPhase, setIsIntroPhase] = useState(true);
 
+  // Custom loading message and timer lifecycle guards
+  const [loadingMessage, setLoadingMessage] = useState("");
+  const timerHandledRef = useRef(false);
+  const autoNextTimeoutRef = useRef(null);
+
   // Microphone and State Machine variables
   const [isMicOn, setIsMicOn] = useState(interactionMedium === "Voice");
   const [micStatus, setMicStatus] = useState("Idle"); // Listening, Speaking, Processing, Idle, Error, Permission Denied, Reconnecting
@@ -274,6 +279,122 @@ function Step2Interview({ interviewData, onFinish }) {
     });
   }, [selectedVoice, interactionMedium, safeStartRecognition, safeAbortRecognition]);
 
+  // Complete the interview and render reports
+  const finishInterview = useCallback(async () => {
+    safeStopRecognition();
+    setIsMicOn(false);
+    setIsSubmitting(true);
+    setLoadingMessage("Compiling final evaluation... Analyzing overall scores... Generating report...");
+    transitionVoiceState("PROCESSING");
+    setMicStatus("Processing");
+
+    try {
+      const result = await axios.post(ServerUrl + "/api/interview/finish", { interviewId }, { withCredentials: true });
+      onFinish(result.data);
+    } catch (error) {
+      console.error("Failed to finish interview:", error);
+      alert("Failed to compile final report. Please try again.");
+      transitionVoiceState("IDLE");
+    } finally {
+      setIsSubmitting(false);
+      setLoadingMessage("");
+    }
+  }, [interviewId, onFinish, safeStopRecognition]);
+
+  // Move to next question or trigger completion
+  const handleNext = useCallback(async () => {
+    if (autoNextTimeoutRef.current) {
+      clearTimeout(autoNextTimeoutRef.current);
+      autoNextTimeoutRef.current = null;
+    }
+
+    setAnswer("");
+    setCode("// Write your solution here...\nfunction solution() {\n  \n}");
+    setFeedback("");
+    timerHandledRef.current = false;
+
+    const totalQuestions = 5;
+
+    // Check if we are finished
+    if (currentIndex + 1 >= totalQuestions || currentIndex + 1 >= questionsList.length) {
+      await finishInterview();
+      return;
+    }
+
+    const nextIdx = currentIndex + 1;
+    const nextQuestionItem = questionsList[nextIdx];
+    const nextTimeLimit = nextQuestionItem?.timeLimit || (mode === "Coding" ? 180 : 60);
+
+    setCurrentIndex(nextIdx);
+    setTimeLeft(nextTimeLimit);
+
+    if (interactionMedium === "Voice") {
+      await speakText("Alright, let's move to the next question.");
+    }
+  }, [currentIndex, questionsList, mode, interactionMedium, finishInterview, speakText]);
+
+  // Submit current answer to the backend
+  const submitAnswer = useCallback(async () => {
+    if (isSubmittingRef.current) return;
+    
+    // Lock timer automatically on submit
+    timerHandledRef.current = true;
+    
+    safeStopRecognition();
+    setIsSubmitting(true);
+    
+    // Differentiate between timeout & manual loading text
+    if (timeLeft === 0) {
+      setLoadingMessage("Time's up! Submitting your answer... Generating next question...");
+    } else {
+      setLoadingMessage("Evaluating your answer... Generating next question...");
+    }
+    
+    transitionVoiceState("PROCESSING");
+    setMicStatus("Processing");
+
+    const submissionAnswer = mode === "Coding" ? code : answer;
+    const cleanedAnswer = cleanTranscript(submissionAnswer);
+
+    try {
+      const result = await axios.post(ServerUrl + "/api/interview/submit-answer", {
+        interviewId,
+        questionIndex: currentIndex,
+        answer: cleanedAnswer || "No response.",
+        timeTaken: currentQuestionRef.current.timeLimit - timeLeft,
+      }, { withCredentials: true });
+
+      setFeedback(result.data.feedback);
+      
+      // Update our local questions array if a next question was generated dynamically
+      if (result.data.nextQuestion) {
+        setQuestionsList((prev) => [...prev, result.data.nextQuestion]);
+      }
+
+      if (interactionMedium === "Voice") {
+        await speakText(result.data.feedback);
+        // Automatically progress after speaking feedback completes
+        await handleNext();
+      } else {
+        // Clear previous auto-next timeouts and register a new one
+        if (autoNextTimeoutRef.current) {
+          clearTimeout(autoNextTimeoutRef.current);
+        }
+        autoNextTimeoutRef.current = setTimeout(() => {
+          handleNext();
+        }, 5000);
+      }
+    } catch (error) {
+      console.error("Answer submission failed:", error);
+      alert("Submission failed. Retrying in typing mode.");
+      transitionVoiceState("IDLE");
+      timerHandledRef.current = false; // Allow retrying on failure
+    } finally {
+      setIsSubmitting(false);
+      setLoadingMessage("");
+    }
+  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, speakText, safeStopRecognition, handleNext]);
+
   // Microphone toggle button action
   const toggleMic = () => {
     if (micStatus === "Permission Denied") {
@@ -290,91 +411,6 @@ function Step2Interview({ interviewData, onFinish }) {
     }
   };
 
-  // Submit current answer to the backend
-  const submitAnswer = useCallback(async () => {
-    if (isSubmittingRef.current) return;
-    
-    safeStopRecognition();
-    setIsSubmitting(true);
-    transitionVoiceState("PROCESSING");
-    setMicStatus("Processing");
-
-    const submissionAnswer = mode === "Coding" ? code : answer;
-    const cleanedAnswer = cleanTranscript(submissionAnswer);
-
-    try {
-      const result = await axios.post(ServerUrl + "/api/interview/submit-answer", {
-        interviewId,
-        questionIndex: currentIndex,
-        answer: cleanedAnswer,
-        timeTaken: currentQuestionRef.current.timeLimit - timeLeft,
-      }, { withCredentials: true });
-
-      setFeedback(result.data.feedback);
-      
-      // Update our local questions array if a next question was generated dynamically
-      if (result.data.nextQuestion) {
-        setQuestionsList((prev) => [...prev, result.data.nextQuestion]);
-      }
-
-      if (interactionMedium === "Voice") {
-        await speakText(result.data.feedback);
-      }
-    } catch (error) {
-      console.error("Answer submission failed:", error);
-      alert("Submission failed. Retrying in typing mode.");
-      transitionVoiceState("IDLE");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, speakText, safeStopRecognition]);
-
-  // Complete the interview and render reports
-  const finishInterview = async () => {
-    safeStopRecognition();
-    setIsMicOn(false);
-    setIsSubmitting(true);
-    transitionVoiceState("PROCESSING");
-    setMicStatus("Processing");
-
-    try {
-      const result = await axios.post(ServerUrl + "/api/interview/finish", { interviewId }, { withCredentials: true });
-      onFinish(result.data);
-    } catch (error) {
-      console.error("Failed to finish interview:", error);
-      alert("Failed to compile final report. Please try again.");
-      transitionVoiceState("IDLE");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Move to next question or trigger completion
-  const handleNext = async () => {
-    setAnswer("");
-    setCode("// Write your solution here...\nfunction solution() {\n  \n}");
-    setFeedback("");
-
-    const totalQuestions = 5;
-
-    // Check if we are finished
-    if (currentIndex + 1 >= totalQuestions || currentIndex + 1 >= questionsList.length) {
-      finishInterview();
-      return;
-    }
-
-    const nextIdx = currentIndex + 1;
-    const nextQuestionItem = questionsList[nextIdx];
-    const nextTimeLimit = nextQuestionItem?.timeLimit || (mode === "Coding" ? 180 : 60);
-
-    setCurrentIndex(nextIdx);
-    setTimeLeft(nextTimeLimit);
-
-    if (interactionMedium === "Voice") {
-      await speakText("Alright, let's move to the next question.");
-    }
-  };
-
   /* ----------------- REACT USEEFFECT LIFECYCLE HOOKS ----------------- */
 
   // Sync refs with state values
@@ -385,6 +421,15 @@ function Step2Interview({ interviewData, onFinish }) {
     feedbackRef.current = feedback;
     currentQuestionRef.current = questionsList[currentIndex];
   }, [isMicOn, micStatus, isSubmitting, feedback, questionsList, currentIndex]);
+
+  // Cleanup auto-next timers on unmount
+  useEffect(() => {
+    return () => {
+      if (autoNextTimeoutRef.current) {
+        clearTimeout(autoNextTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Initialize TTS voices
   useEffect(() => {
@@ -589,16 +634,23 @@ function Step2Interview({ interviewData, onFinish }) {
           await speakText("Alright, this final question might be a bit more challenging.");
         }
         await speakText(currentQuestion.question);
+        
+        // Start listening only after AI completes speaking the question
+        safeStartRecognition();
       }
     };
 
     runIntro();
-  }, [selectedVoice, isIntroPhase, currentIndex, questionsList.length, userName, speakText, interactionMedium, currentQuestion]);
+  }, [selectedVoice, isIntroPhase, currentIndex, questionsList.length, userName, speakText, interactionMedium, currentQuestion, safeStartRecognition]);
 
-  // Question Timer Countdown
+  // Question Timer Countdown (stops while AI is speaking)
   useEffect(() => {
     if (isIntroPhase) return;
     if (!currentQuestion) return;
+
+    if (interactionMedium === "Voice" && voiceStateRef.current === "SPEAKING") {
+      return;
+    }
 
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
@@ -611,7 +663,7 @@ function Step2Interview({ interviewData, onFinish }) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isIntroPhase, currentIndex, currentQuestion]);
+  }, [isIntroPhase, currentIndex, currentQuestion, voiceState, interactionMedium]);
 
   // Silence Detection Loop (Voice Medium only)
   useEffect(() => {
@@ -646,6 +698,10 @@ function Step2Interview({ interviewData, onFinish }) {
   // Handle Question Timeout
   useEffect(() => {
     if (isIntroPhase || !currentQuestion || timeLeft !== 0 || isSubmitting || feedback) return;
+    if (timerHandledRef.current) return;
+
+    timerHandledRef.current = true;
+    console.log("[Timer] Timeout reached. Triggering automatic submission.");
     submitAnswer();
   }, [timeLeft, isIntroPhase, currentQuestion, isSubmitting, feedback, submitAnswer]);
 
@@ -682,6 +738,31 @@ function Step2Interview({ interviewData, onFinish }) {
             totalQuestions={5}
           />
         </div>
+
+        {/* 🔄 Premium Loading Overlay */}
+        {isSubmitting && (
+          <Motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center text-white"
+          >
+            <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full space-y-6">
+              <div className="relative w-20 h-20 mx-auto">
+                <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20"></div>
+                <div className="absolute inset-0 rounded-full border-4 border-t-emerald-500 animate-spin"></div>
+                <div className="absolute inset-2 rounded-full border-4 border-teal-500/10 border-b-teal-400 animate-spin [animation-duration:1.5s]"></div>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-emerald-400">
+                  {loadingMessage || "Evaluating Solution..."}
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Analyzing code structure, verifying logic, and compiling feedback report metrics.
+                </p>
+              </div>
+            </div>
+          </Motion.div>
+        )}
       </div>
     );
   }
@@ -867,6 +948,31 @@ function Step2Interview({ interviewData, onFinish }) {
           )}
         </div>
       </div>
+
+      {/* 🔄 Premium Loading Overlay */}
+      {isSubmitting && (
+        <Motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center text-white"
+        >
+          <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full space-y-6">
+            <div className="relative w-20 h-20 mx-auto">
+              <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-t-emerald-500 animate-spin"></div>
+              <div className="absolute inset-2 rounded-full border-4 border-teal-500/10 border-b-teal-400 animate-spin [animation-duration:1.5s]"></div>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-emerald-400">
+                {loadingMessage || "Evaluating Answer..."}
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Analyzing answer structure, comparing parameters, and generating next question.
+              </p>
+            </div>
+          </div>
+        </Motion.div>
+      )}
     </div>
   )
 }
