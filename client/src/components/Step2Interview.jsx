@@ -9,6 +9,17 @@ import axios from "axios"
 import { motion as Motion } from "motion/react"
 import { ServerUrl } from '../config'
 
+// 🤖 Explicit Voice State transition rules
+const VALID_TRANSITIONS = {
+  IDLE: ["LISTENING", "PROCESSING", "SPEAKING", "ERROR", "RECONNECTING"],
+  LISTENING: ["PROCESSING", "SPEAKING", "STOPPING", "ERROR", "IDLE"],
+  PROCESSING: ["SPEAKING", "IDLE", "LISTENING"],
+  SPEAKING: ["STOPPING", "IDLE", "LISTENING"],
+  STOPPING: ["IDLE", "LISTENING", "RECONNECTING", "SPEAKING"],
+  ERROR: ["RECONNECTING", "IDLE", "LISTENING"],
+  RECONNECTING: ["LISTENING", "STOPPING", "IDLE", "ERROR", "SPEAKING"]
+};
+
 function Step2Interview({ interviewData, onFinish }) {
   const { interviewId, questions: initialQuestions, userName, mode, interactionMedium = "Voice" } = interviewData;
 
@@ -29,7 +40,7 @@ function Step2Interview({ interviewData, onFinish }) {
   const [micStatus, setMicStatus] = useState("Idle"); // Listening, Speaking, Processing, Idle, Error, Permission Denied, Reconnecting
   const [isAIPlaying, setIsAIPlaying] = useState(false);
 
-  // 🤖 Voice state machine: IDLE, LISTENING, PROCESSING, SPEAKING, STOPPING, ERROR, RECONNECTING
+  // 🤖 Voice state machine tracking
   const [voiceState, setVoiceState] = useState("IDLE");
   const voiceStateRef = useRef("IDLE");
 
@@ -40,9 +51,25 @@ function Step2Interview({ interviewData, onFinish }) {
   const isRecognitionActiveRef = useRef(false);
 
   const transitionVoiceState = (nextState) => {
-    console.log(`[Voice] ${voiceStateRef.current} → ${nextState}`);
+    const currentState = voiceStateRef.current;
+    
+    // 1. Filter out duplicate states
+    if (currentState === nextState) {
+      return;
+    }
+
+    // 2. Enforce transition rules
+    const allowed = VALID_TRANSITIONS[currentState]?.includes(nextState);
+    if (!allowed) {
+      console.warn(`[Voice] Blocked illegal state transition: ${currentState} → ${nextState}`);
+      return;
+    }
+
+    console.log(`[Voice] ${currentState} → ${nextState}`);
     voiceStateRef.current = nextState;
     setVoiceState(nextState);
+
+    // Sync isAIPlaying state
     if (nextState === "SPEAKING") {
       setIsAIPlaying(true);
     } else {
