@@ -3,6 +3,31 @@ import express from "express";
 import connectDb from "./config/connectDb.js";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+
+const app = express();
+
+// 🛡️ Security Headers Configuration
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Disable CSP to prevent blocking external scripts like Razorpay checkouts
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+// 🛡️ API Request Rate Limiter (100 requests per 15 minutes per IP)
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many requests from this IP. Please try again after 15 minutes."
+  }
+});
+app.use("/api/", limiter);
 
 // Routes
 import authRouter from "./routes/auth.route.js";
@@ -10,7 +35,6 @@ import userRouter from "./routes/user.route.js";
 import interviewRouter from "./routes/interview.route.js";
 import paymentRouter from "./routes/payment.route.js";
 
-const app = express();
 
 // ✅ Allowed origins (supports custom domains via env)
 const allowedOrigins = (

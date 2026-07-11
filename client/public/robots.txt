@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://mockverse.online/sitemap.xml

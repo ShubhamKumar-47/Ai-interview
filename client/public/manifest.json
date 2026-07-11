@@ -1,0 +1,21 @@
+{
+  "short_name": "MockVerse",
+  "name": "MockVerse AI Interview SaaS",
+  "icons": [
+    {
+      "src": "/img1.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/img1.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#020617",
+  "theme_color": "#10b981",
+  "display": "standalone",
+  "orientation": "portrait"
+}

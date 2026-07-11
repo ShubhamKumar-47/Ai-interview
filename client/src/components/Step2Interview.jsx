@@ -181,11 +181,11 @@ function Step2Interview({ interviewData, onFinish }) {
     window.speechSynthesis.cancel();
     
     let attempts = 0;
-    while ((window.speechSynthesis.speaking || window.speechSynthesis.pending) && attempts < 10) {
-      await new Promise((r) => setTimeout(r, 100));
+    while ((window.speechSynthesis.speaking || window.speechSynthesis.pending) && attempts < 20) {
+      await new Promise((r) => setTimeout(r, 15));
       attempts++;
     }
-    console.log(`[Voice] SpeechSynthesis clean after ${attempts * 100}ms.`);
+    console.log(`[Voice] SpeechSynthesis clean after ${attempts * 15}ms.`);
   };
 
   // TTS implementation
@@ -205,11 +205,7 @@ function Step2Interview({ interviewData, onFinish }) {
 
     await waitSpeechSynthesisReady();
 
-    const humanText = text
-      .replace(/,/g, ", ... ")
-      .replace(/\./g, ". ... ");
-
-    const utterance = new SpeechSynthesisUtterance(humanText);
+    const utterance = new SpeechSynthesisUtterance(text);
     if (selectedVoice) {
       utterance.voice = selectedVoice;
     }
@@ -593,7 +589,7 @@ function Step2Interview({ interviewData, onFinish }) {
               transitionVoiceState("IDLE");
             }
           }
-        }, 400);
+        }, 150);
       } else if (micStatusRef.current !== "Permission Denied" && !isAISpeakingRef.current && voiceStateRef.current !== "PROCESSING") {
         setMicStatus("Idle");
       }

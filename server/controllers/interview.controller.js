@@ -213,58 +213,119 @@ export const submitAnswer = async (req, res) => {
     }
 
     const question = interview.questions[questionIndex]
+    const totalQuestions = 5;
+    const nextIndex = questionIndex + 1;
+    const hasNextQuestion = nextIndex < totalQuestions;
 
-    // If no answer
-    if (!answer || answer.trim() === "") {
-      question.score = 0;
-      question.feedback = "You did not submit an answer.";
-      question.answer = "";
+    const nextDifficulty = ["easy", "easy", "medium", "medium", "hard"][nextIndex] || "medium";
+    const nextTimeLimit = interview.mode === "Coding" ? 180 : [60, 60, 90, 90, 120][nextIndex] || 60;
+
+    const projectText = Array.isArray(interview.projects) && interview.projects.length ? interview.projects.join(", ") : "None";
+    const skillsText = Array.isArray(interview.skills) && interview.skills.length ? interview.skills.join(", ") : "None";
+    const safeResume = interview.resumeText?.trim() || "None";
+
+    // 1. Candidate did not submit an answer or time limit exceeded
+    if (!answer || answer.trim() === "" || timeTaken > question.timeLimit) {
+      question.answer = answer || "";
       question.confidence = 0;
       question.communication = 0;
       question.correctness = 0;
-    } else if (timeTaken > question.timeLimit) {
-      // If time exceeded
       question.score = 0;
-      question.feedback = "Time limit exceeded. Answer not evaluated.";
-      question.answer = answer;
-      question.confidence = 0;
-      question.communication = 0;
-      question.correctness = 0;
-    } else {
-      // Evaluate the answer
-      const evalSystemPrompt = `You are a professional human interviewer evaluating a candidate's answer in a real ${interview.mode} interview.
+      question.feedback = timeTaken > question.timeLimit
+        ? "Time limit exceeded. Answer not evaluated."
+        : "You did not submit an answer.";
 
-Evaluate naturally and fairly, like a real senior engineer would.
+      await interview.save();
+
+      if (hasNextQuestion) {
+        // Only call AI to generate the next question
+        const systemPrompt = `You are a real senior engineer conducting a professional ${interview.mode} interview.
+The candidate's role is ${interview.role}, and experience level is ${interview.experience}.
+Resume details: Projects: ${projectText}, Skills: ${skillsText}.
+
+Generate the NEXT question (Question ${nextIndex + 1} of ${totalQuestions}).
+Difficulty level: ${nextDifficulty}.
+
+Strict Guidelines:
+- The candidate did not submit an answer for the previous question. Ask a targeted follow-up or probing question directly about their previous question topic to let them demonstrate their knowledge, or move to a different topic if needed.
+- Avoid repetitive textbook questions (no simple "What is X?"). Focus on scenario-based questions.
+- Do NOT repeat or ask any question that is semantically similar to the ones already asked:
+${interview.questions.map(q => `- ${q.question}`).join("\n")}
+
+Return ONLY the next question or hint text. Do NOT add greetings, introductory text, explanations, or JSON formatting.`;
+
+        const nextQuestionText = await askAi([
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Please generate the next question." }
+        ]);
+
+        if (nextQuestionText && nextQuestionText.trim()) {
+          const nextQuestion = {
+            question: nextQuestionText.trim(),
+            difficulty: nextDifficulty,
+            timeLimit: nextTimeLimit,
+          };
+          interview.questions.push(nextQuestion);
+          await interview.save();
+
+          return res.status(200).json({
+            feedback: question.feedback,
+            nextQuestion: nextQuestion
+          });
+        }
+      }
+
+      return res.status(200).json({
+        feedback: question.feedback,
+        isFinished: !hasNextQuestion
+      });
+    }
+
+    // 2. Candidate submitted an answer - process with single combined AI call if there is a next question
+    if (hasNextQuestion) {
+      const combinedSystemPrompt = `You are a professional senior interviewer conducting a ${interview.mode} interview.
+The candidate's role is ${interview.role}, and experience level is ${interview.experience}.
+Candidate's resume details: Projects: ${projectText}, Skills: ${skillsText}.
+Resume Text: ${safeResume.substring(0, 1000)}
+
+Evaluate the candidate's answer for Question ${questionIndex + 1}:
+Question was: ${question.question}
+Candidate's Answer was: ${answer}
+
 Score the answer in these areas (0 to 10):
-1. Confidence - Does the answer sound clear, confident, and well-presented? (If typing/chat, evaluate structural clarity and directness)
-2. Communication - Is the language clear, simple, and easy to understand?
-3. Correctness - Is the answer accurate, relevant, complete, and technically sound? (If Coding mode, evaluate code correctness, edge cases, time/space complexity)
+1. Confidence - Structural clarity, confident tone, directness.
+2. Communication - Clarity, simplicity, easy to understand.
+3. Correctness - Accuracy, technical depth, logic. (For Coding, evaluate code correctness, complexity, edge cases).
 
-Rules:
+Evaluation Rules:
 - Be realistic and unbiased. Do not give random high scores.
-- If the answer is weak, incomplete, or wrong, score low.
-- If the answer is strong, detailed, and accurate, score high.
 - finalScore is the average of confidence, communication, and correctness, rounded to the nearest integer.
-- Feedback rules: write natural human-like feedback, 10 to 15 words only. Suggest improvements. Do NOT repeat the question or explain the scoring.
+- Feedback: Write natural human-like feedback, 10 to 15 words only. Suggest improvements.
 
-Return ONLY valid JSON in this format:
+Generate the NEXT question (Question ${nextIndex + 1} of ${totalQuestions}) of difficulty: ${nextDifficulty}.
+Next question adaptive guidelines:
+- If the candidate's answer was strong (score >= 7), increase the difficulty.
+- If the answer was weak (score < 4), ask a targeted follow-up question directly about their previous answer.
+- If Coding mode and they have bugs/suboptimal code, provide a progressive hint or point out an edge case.
+- Avoid textbook questions (no "What is X?"). Use scenario-based questions.
+- Do NOT repeat or ask any question semantically similar to:
+${interview.questions.map(q => `- ${q.question}`).join("\n")}
+
+Return strictly valid JSON format:
 {
   "confidence": number,
   "communication": number,
   "correctness": number,
   "finalScore": number,
-  "feedback": "short human feedback"
+  "feedback": "short human feedback",
+  "nextQuestionText": "next question text or hint"
 }`;
 
-      const evalMessages = [
-        { role: "system", content: evalSystemPrompt },
-        {
-          role: "user",
-          content: `Question: ${question.question}\nAnswer: ${answer}`
-        }
-      ];
+      const aiResponse = await askAi([
+        { role: "system", content: combinedSystemPrompt },
+        { role: "user", content: "Please evaluate the answer and generate the next question." }
+      ]);
 
-      const aiResponse = await askAi(evalMessages);
       const parsed = parseAiJson(aiResponse);
 
       question.answer = answer;
@@ -273,81 +334,72 @@ Return ONLY valid JSON in this format:
       question.correctness = parsed.correctness || 0;
       question.score = parsed.finalScore || 0;
       question.feedback = parsed.feedback || "Good effort.";
-    }
 
-    await interview.save();
+      const nextQuestion = {
+        question: (parsed.nextQuestionText || "").trim(),
+        difficulty: nextDifficulty,
+        timeLimit: nextTimeLimit,
+      };
 
-    // Check if we need to generate a dynamic NEXT question (total 5 questions)
-    const totalQuestions = 5;
-    const nextIndex = questionIndex + 1;
+      interview.questions.push(nextQuestion);
+      await interview.save();
 
-    if (nextIndex < totalQuestions) {
-      const nextDifficulty = ["easy", "easy", "medium", "medium", "hard"][nextIndex];
-      const nextTimeLimit = interview.mode === "Coding" ? 180 : [60, 60, 90, 90, 120][nextIndex];
-
-      // Format conversation history for AI context
-      const historyItems = interview.questions.map((q, idx) => {
-        return `Q${idx + 1}: ${q.question}\nCandidate Answer: ${q.answer || "(No Answer)"}\nEvaluation Score: ${q.score}/10\nFeedback: ${q.feedback}`;
+      return res.status(200).json({
+        feedback: question.feedback,
+        nextQuestion: nextQuestion
       });
+    } else {
+      // Evaluation only (final question)
+      const evalSystemPrompt = `You are a professional senior interviewer evaluating a candidate's answer in a ${interview.mode} interview.
+Candidate role: ${interview.role}, experience level: ${interview.experience}.
 
-      const askedQuestionsText = interview.questions.map(q => `- ${q.question}`).join("\n");
-      const conversationHistoryText = historyItems.join("\n\n");
+Evaluate candidate's answer for Question ${questionIndex + 1}:
+Question was: ${question.question}
+Candidate's Answer was: ${answer}
 
-      const followUpSystemPrompt = `You are a real senior engineer conducting a professional ${interview.mode} interview.
-The candidate's role is ${interview.role}, and experience level is ${interview.experience}.
-Candidate's resume details are saved.
+Score in these areas (0 to 10):
+1. Confidence
+2. Communication
+3. Correctness
 
-List of questions asked so far in this interview:
-${askedQuestionsText}
+Evaluation Rules:
+- finalScore is the average of the three, rounded to the nearest integer.
+- Feedback: Write natural human-like feedback, 10 to 15 words only. Suggest improvements.
 
-Full Interview Conversation History & Performance:
-${conversationHistoryText}
+Return strictly valid JSON format:
+{
+  "confidence": number,
+  "communication": number,
+  "correctness": number,
+  "finalScore": number,
+  "feedback": "short human feedback"
+}`;
 
-Your task is to generate the NEXT question (Question ${nextIndex + 1} of ${totalQuestions}).
-The difficulty level must be: ${nextDifficulty}.
+      const aiResponse = await askAi([
+        { role: "system", content: evalSystemPrompt },
+        { role: "user", content: "Please evaluate the answer." }
+      ]);
 
-Strict Adaptive Guidelines:
-1. Ensure the question adapts dynamically:
-   - If the candidate's last answer was strong (score >= 7), increase the difficulty or move to a more advanced, related concept.
-   - If the last answer was weak (score < 4), ask a targeted follow-up or probing question directly about their previous answer to let them clarify or demonstrate deep knowledge.
-   - If this is a "Coding" interview and they have bugs or suboptimal code, provide a progressive hint or point out a specific edge case rather than giving the solution or changing the problem.
-2. Avoid repetitive textbook questions (no simple "What is X?"). Focus on scenario-based questions (e.g. "Your database suddenly throttles under traffic. How would you investigate?").
-3. Do NOT repeat or ask any question that is semantically similar to the ones already asked.
-4. Keep the language natural, concise, encouraging, and conversational.
-5. Return ONLY the question or hint text. Do NOT add numbering, greetings, explanations, or introductory text.`;
+      const parsed = parseAiJson(aiResponse);
 
-      const followUpMessages = [
-        { role: "system", content: followUpSystemPrompt },
-        { role: "user", content: "Please generate the next question." }
-      ];
+      question.answer = answer;
+      question.confidence = parsed.confidence || 0;
+      question.communication = parsed.communication || 0;
+      question.correctness = parsed.correctness || 0;
+      question.score = parsed.finalScore || 0;
+      question.feedback = parsed.feedback || "Good effort.";
 
-      const nextQuestionText = await askAi(followUpMessages);
+      await interview.save();
 
-      if (nextQuestionText && nextQuestionText.trim()) {
-        const nextQuestion = {
-          question: nextQuestionText.trim(),
-          difficulty: nextDifficulty,
-          timeLimit: nextTimeLimit,
-        };
-
-        interview.questions.push(nextQuestion);
-        await interview.save();
-
-        return res.status(200).json({
-          feedback: question.feedback,
-          nextQuestion: nextQuestion
-        });
-      }
+      return res.status(200).json({
+        feedback: question.feedback,
+        isFinished: true
+      });
     }
-
-    return res.status(200).json({
-      feedback: question.feedback,
-      isFinished: true
-    });
 
   } catch (error) {
     console.error("submitAnswer Error:", error);
-    return res.status(500).json({message:`failed to submit answer ${error.message}`})
+    return res.status(500).json({ message: `failed to submit answer ${error.message}` })
   }
 }
 
