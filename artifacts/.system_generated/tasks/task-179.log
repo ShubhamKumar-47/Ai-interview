@@ -43,3 +43,168 @@ DataBase Connected
 [nodemon] starting `node index.js`
 🚀 Server running on port 8000
 DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[Backend Debug] submitAnswer body: {
+  interviewId: '6a528eccea3233b40a204fbf',
+  questionIndex: 0,
+  answer: 'I would use a hash map to store the count of each integer. Then I would iterate through the list again and return the first integer that has a count of 1. The function signature would be: public int firstUnique(List<Integer> nums)',
+  timeTaken: 23
+}
+[Backend Debug] hasNextQuestion: true nextIndex: 1 totalQuestions: 5
+[Backend Debug] Raw AI response received: {
+  "confidence": 7,
+  "communication": 7,
+  "correctness": 6,
+  "finalScore": 7,
+  "feedback": "Good approach. Clarify edge cases like an empty list.",
+  "nextQuestionText": "How would you modify your function to handle an empty list or a list with all duplicates?"
+}
+[Backend Debug] Parsed AI JSON: {
+  confidence: 7,
+  communication: 7,
+  correctness: 6,
+  finalScore: 7,
+  feedback: 'Good approach. Clarify edge cases like an empty list.',
+  nextQuestionText: 'How would you modify your function to handle an empty list or a list with all duplicates?'
+}
+[Backend Debug] submitAnswer body: {
+  interviewId: '6a528eccea3233b40a204fbf',
+  questionIndex: 1,
+  answer: 'If the list is empty, I would return a default value -1 or throw an exception. If the list has all duplicates, the count of all elements would be greater than 1, so the function would return -1 indicating no unique element was found.',
+  timeTaken: 23
+}
+[Backend Debug] hasNextQuestion: true nextIndex: 2 totalQuestions: 5
+[Backend Debug] Raw AI response received: {
+  "confidence": 5,
+  "communication": 6,
+  "correctness": 4,
+  "finalScore": 5,
+  "feedback": "Clarify the behavior for all duplicates and return values.",
+  "nextQuestionText": "How would you optimize your function if the list is very large?"
+}
+[Backend Debug] Parsed AI JSON: {
+  confidence: 5,
+  communication: 6,
+  correctness: 4,
+  finalScore: 5,
+  feedback: 'Clarify the behavior for all duplicates and return values.',
+  nextQuestionText: 'How would you optimize your function if the list is very large?'
+}
+[Backend Debug] submitAnswer body: {
+  interviewId: '6a528eccea3233b40a204fbf',
+  questionIndex: 2,
+  answer: 'If the list is very large, I would process it in a single pass if possible, or use a streaming approach. Using a LinkedHashMap would allow us to keep insertion order while counting, so we only need to iterate over the unique keys of the map in order to find the first one with count 1, which is faster than iterating the large list again.',
+  timeTaken: 23
+}
+[Backend Debug] hasNextQuestion: true nextIndex: 3 totalQuestions: 5
+[Backend Debug] Raw AI response received: {
+  "confidence": 6,
+  "communication": 5,
+  "correctness": 7,
+  "finalScore": 6,
+  "feedback": "Good approach, but needs simpler language and clearer structure.",
+  "nextQuestionText": "Can you explain why a LinkedHashMap is chosen over a regular HashMap for this task?"
+}
+[Backend Debug] Parsed AI JSON: {
+  confidence: 6,
+  communication: 5,
+  correctness: 7,
+  finalScore: 6,
+  feedback: 'Good approach, but needs simpler language and clearer structure.',
+  nextQuestionText: 'Can you explain why a LinkedHashMap is chosen over a regular HashMap for this task?'
+}
+[Backend Debug] submitAnswer body: {
+  interviewId: '6a528eccea3233b40a204fbf',
+  questionIndex: 3,
+  answer: 'A regular HashMap does not guarantee any specific iteration order. A LinkedHashMap maintains a doubly-linked list running through all of its entries, which defines the iteration ordering (usually insertion-order). This is crucial for finding the FIRST unique element, as we need to check them in the order they were inserted.',
+  timeTaken: 19
+}
+[Backend Debug] hasNextQuestion: true nextIndex: 4 totalQuestions: 5
+[Backend Debug] Raw AI response received: {
+  "confidence": 8,
+  "communication": 7,
+  "correctness": 8,
+  "finalScore": 8,
+  "feedback": "Great understanding of data structures; consider elaborating on performance implications.",
+  "nextQuestionText": "How would you implement a cache that evicts the least recently used item? Explain your approach."
+}
+[Backend Debug] Parsed AI JSON: {
+  confidence: 8,
+  communication: 7,
+  correctness: 8,
+  finalScore: 8,
+  feedback: 'Great understanding of data structures; consider elaborating on performance implications.',
+  nextQuestionText: 'How would you implement a cache that evicts the least recently used item? Explain your approach.'
+}
+[Backend Debug] submitAnswer body: {
+  interviewId: '6a528eccea3233b40a204fbf',
+  questionIndex: 4,
+  answer: 'I would use a combination of a HashMap and a doubly-linked list. The HashMap provides O(1) lookups for the cache items. The doubly-linked list maintains the order of usage, where the most recently used item is moved to the head, and the least recently used item is at the tail. Eviction is O(1) by removing the tail element and its corresponding entry in the HashMap.',
+  timeTaken: 20
+}
+[Backend Debug] hasNextQuestion: false nextIndex: 5 totalQuestions: 5
+[nodemon] restarting due to changes...
+[nodemon] starting `node index.js`
+🚀 Server running on port 8000
+DataBase Connected
+[Backend Debug] submitAnswer body: {
+  interviewId: '6a528fc5ea3233b40a204fed',
+  questionIndex: 0,
+  answer: 'No response.',
+  timeTaken: 60
+}
+[Backend Debug] hasNextQuestion: true nextIndex: 1 totalQuestions: 5
+[Backend Debug] Raw AI response received: {
+  "confidence": 0,
+  "communication": 0,
+  "correctness": 0,
+  "finalScore": 0,
+  "feedback": "Consider practicing potential interview questions and responses.",
+  "nextQuestionText": "Can you explain how you would validate user input in a web form?"
+}
+[Backend Debug] Parsed AI JSON: {
+  confidence: 0,
+  communication: 0,
+  correctness: 0,
+  finalScore: 0,
+  feedback: 'Consider practicing potential interview questions and responses.',
+  nextQuestionText: 'Can you explain how you would validate user input in a web form?'
+}
+[Backend Debug] submitAnswer body: {
+  interviewId: '6a528fc5ea3233b40a204fed',
+  questionIndex: 1,
+  answer: 'No response.',
+  timeTaken: 60
+}
+[Backend Debug] hasNextQuestion: true nextIndex: 2 totalQuestions: 5
+[Backend Debug] Raw AI response received: {
+  "confidence": 0,
+  "communication": 0,
+  "correctness": 0,
+  "finalScore": 0,
+  "feedback": "No response given; please prepare for such questions.",
+  "nextQuestionText": "Can you describe a method to ensure data security in web applications?"
+}
+[Backend Debug] Parsed AI JSON: {
+  confidence: 0,
+  communication: 0,
+  correctness: 0,
+  finalScore: 0,
+  feedback: 'No response given; please prepare for such questions.',
+  nextQuestionText: 'Can you describe a method to ensure data security in web applications?'
+}

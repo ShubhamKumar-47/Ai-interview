@@ -13,6 +13,8 @@
 
 ### 🧠 Just-In-Time (JIT) Adaptive AI Engine
 *   **Adaptive Question Loops**: Rather than static pre-generation, MockVerse creates the initial question and dynamically evaluates each candidate answer.
+*   **Dynamic Question Counts**: Configurable question count limits (e.g. 5 or 10 questions) can be selected directly from the Setup UI, generated at database model level, and dynamically resolved during progression.
+*   **AI Fallback Guards**: Enforces strict backend fallback question generation. If AI generation is empty, fails, or throws due to quiet/empty candidate answers, a standard generic follow-up question is injected to guarantee that the multi-question flow progresses securely without premature completion.
 *   **Contextual Branching**: High-scoring answers (score $\ge 7$) adaptively increase the difficulty, while lower-scoring answers trigger targeted follow-up prompts to probe strengths and weaknesses.
 
 ### 🎙️ Synchronized Voice Engine with Barge-In

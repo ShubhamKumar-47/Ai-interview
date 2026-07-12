@@ -40,6 +40,10 @@ const interviewSchema = new mongoose.Schema({
     resumeText:{
      type:String
     },
+    totalQuestions:{
+      type:Number,
+      default:5
+    },
     questions:[questionsSchema],
 
     finalScore: { type: Number, default: 0 },

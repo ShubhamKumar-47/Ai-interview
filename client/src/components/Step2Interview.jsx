@@ -21,7 +21,7 @@ const VALID_TRANSITIONS = {
 };
 
 function Step2Interview({ interviewData, onFinish }) {
-  const { interviewId, questions: initialQuestions, userName, mode, interactionMedium = "Voice" } = interviewData;
+  const { interviewId, questions: initialQuestions, userName, mode, interactionMedium = "Voice", totalQuestions = 5 } = interviewData;
 
   const [questionsList, setQuestionsList] = useState(initialQuestions);
   // Synchronous ref to prevent React batching state latency issues
@@ -58,7 +58,7 @@ function Step2Interview({ interviewData, onFinish }) {
   // Sync ref to track native SpeechRecognition active state in browser thread
   const isRecognitionActiveRef = useRef(false);
 
-  const transitionVoiceState = (nextState) => {
+  const transitionVoiceState = useCallback((nextState) => {
     const currentState = voiceStateRef.current;
     
     // 1. Filter out duplicate states
@@ -83,7 +83,7 @@ function Step2Interview({ interviewData, onFinish }) {
     } else {
       setIsAIPlaying(false);
     }
-  };
+  }, []);
 
   const recognitionRef = useRef(null);
   const videoRef = useRef(null);
@@ -148,7 +148,7 @@ function Step2Interview({ interviewData, onFinish }) {
       isRecognitionActiveRef.current = false;
       transitionVoiceState("IDLE");
     }
-  }, [interactionMedium]);
+  }, [interactionMedium, transitionVoiceState]);
 
   const safeStopRecognition = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -162,7 +162,7 @@ function Step2Interview({ interviewData, onFinish }) {
       console.warn("[Voice] stop() failed:", err);
       transitionVoiceState("IDLE");
     }
-  }, []);
+  }, [transitionVoiceState]);
 
   const safeAbortRecognition = useCallback(() => {
     if (!recognitionRef.current) return;
@@ -176,7 +176,7 @@ function Step2Interview({ interviewData, onFinish }) {
       console.warn("[Voice] abort() failed:", err);
       transitionVoiceState("IDLE");
     }
-  }, []);
+  }, [transitionVoiceState]);
 
   // Wait helper for SpeechSynthesis to resolve pending states
   const waitSpeechSynthesisReady = async () => {
@@ -276,7 +276,7 @@ function Step2Interview({ interviewData, onFinish }) {
       setSubtitle(text);
       window.speechSynthesis.speak(utterance);
     });
-  }, [selectedVoice, interactionMedium, safeStartRecognition, safeAbortRecognition]);
+  }, [selectedVoice, interactionMedium, safeStartRecognition, safeAbortRecognition, transitionVoiceState]);
 
   // Complete the interview and render reports
   const finishInterview = useCallback(async () => {
@@ -286,7 +286,7 @@ function Step2Interview({ interviewData, onFinish }) {
     setLoadingMessage("Compiling final evaluation... Analyzing overall scores... Generating report...");
     transitionVoiceState("PROCESSING");
     setMicStatus("Processing");
-
+ 
     try {
       const result = await axios.post(ServerUrl + "/api/interview/finish", { interviewId }, { withCredentials: true });
       onFinish(result.data);
@@ -298,7 +298,7 @@ function Step2Interview({ interviewData, onFinish }) {
       setIsSubmitting(false);
       setLoadingMessage("");
     }
-  }, [interviewId, onFinish, safeStopRecognition]);
+  }, [interviewId, onFinish, safeStopRecognition, transitionVoiceState]);
 
   // Move to next question or trigger completion
   const handleNext = useCallback(async () => {
@@ -312,7 +312,6 @@ function Step2Interview({ interviewData, onFinish }) {
     setFeedback("");
     timerHandledRef.current = false;
 
-    const totalQuestions = 5;
     const nextIdx = currentIndex + 1;
 
     // Check if we are finished based on synchronous ref array length
@@ -326,11 +325,8 @@ function Step2Interview({ interviewData, onFinish }) {
 
     setCurrentIndex(nextIdx);
     setTimeLeft(nextTimeLimit);
-
-    if (interactionMedium === "Voice") {
-      await speakText("Alright, let's move to the next question.");
-    }
-  }, [currentIndex, mode, interactionMedium, finishInterview, speakText]);
+    transitionVoiceState("IDLE");
+  }, [currentIndex, mode, finishInterview, transitionVoiceState, totalQuestions]);
 
   // Submit current answer to the backend
   const submitAnswer = useCallback(async () => {
@@ -373,7 +369,6 @@ function Step2Interview({ interviewData, onFinish }) {
 
       if (interactionMedium === "Voice") {
         await speakText(result.data.feedback);
-        // Automatically progress after speaking feedback completes
         await handleNext();
       } else {
         // Clear previous auto-next timeouts and register a new one
@@ -393,7 +388,7 @@ function Step2Interview({ interviewData, onFinish }) {
       setIsSubmitting(false);
       setLoadingMessage("");
     }
-  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, speakText, safeStopRecognition, handleNext]);
+  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, speakText, safeStopRecognition, handleNext, transitionVoiceState, questionsList.length, totalQuestions]);
 
   // Microphone toggle button action
   const toggleMic = () => {
@@ -612,7 +607,7 @@ function Step2Interview({ interviewData, onFinish }) {
         console.warn("Abort failed:", err);
       }
     };
-  }, [interactionMedium, isMicOn, safeStartRecognition, safeAbortRecognition]);
+  }, [interactionMedium, isMicOn, safeStartRecognition, safeAbortRecognition, transitionVoiceState]);
 
   // Handle Voice / Chat Setup and Intro Phase Speech
   useEffect(() => {
@@ -735,7 +730,7 @@ function Step2Interview({ interviewData, onFinish }) {
             feedback={feedback}
             onNext={handleNext}
             currentIndex={currentIndex}
-            totalQuestions={5}
+            totalQuestions={totalQuestions}
           />
         </div>
 
@@ -819,7 +814,7 @@ function Step2Interview({ interviewData, onFinish }) {
                   <span className="text-xs text-gray-400">Current Question</span>
                 </div>
                 <div>
-                  <span className="text-2xl font-bold text-emerald-600 block">5</span>
+                  <span className="text-2xl font-bold text-emerald-600 block">{totalQuestions}</span>
                   <span className="text-xs text-gray-400">Total Questions</span>
                 </div>
               </div>
@@ -846,7 +841,7 @@ function Step2Interview({ interviewData, onFinish }) {
             </div>
             
             <div className="text-center text-xs text-emerald-200">
-              Question {currentIndex + 1} of 5
+              Question {currentIndex + 1} of {totalQuestions}
             </div>
           </div>
         )}
@@ -861,7 +856,7 @@ function Step2Interview({ interviewData, onFinish }) {
             {!isIntroPhase && currentQuestion && (
               <div className="relative mb-6 bg-gray-50 p-4 sm:p-6 rounded-2xl border border-gray-200 shadow-sm">
                 <p className="text-xs text-gray-400 mb-2">
-                  Question {currentIndex + 1} of 5 ({currentQuestion.difficulty} level)
+                  Question {currentIndex + 1} of {totalQuestions} ({currentQuestion.difficulty} level)
                 </p>
                 <div className="text-base sm:text-lg font-semibold text-gray-800 leading-relaxed">
                   {currentQuestion.question}
@@ -934,7 +929,7 @@ function Step2Interview({ interviewData, onFinish }) {
                 onClick={handleNext}
                 className="w-full bg-linear-to-r from-emerald-600 to-teal-500 text-white py-3.5 rounded-xl shadow-md hover:opacity-90 transition flex items-center justify-center gap-1 font-semibold text-sm cursor-pointer"
               >
-                {currentIndex + 1 >= 5 ? "Finish & Get Report" : "Next Question"} <BsArrowRight size={18} />
+                {currentIndex + 1 >= totalQuestions ? "Finish & Get Report" : "Next Question"} <BsArrowRight size={18} />
               </button>
             </Motion.div>
           )}

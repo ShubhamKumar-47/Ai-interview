@@ -107,7 +107,12 @@ const parseAiJson = (text) => {
 
 export const generateQuestion = async (req, res) => {
   try {
-    let { role, experience, mode, interactionMedium, resumeText, projects, skills } = req.body
+    let { role, experience, mode, interactionMedium, resumeText, projects, skills, totalQuestions } = req.body
+
+    let parsedTotalQuestions = parseInt(totalQuestions, 10);
+    if (isNaN(parsedTotalQuestions) || parsedTotalQuestions <= 0) {
+      parsedTotalQuestions = 5;
+    }
 
     role = role?.trim();
     experience = experience?.trim();
@@ -182,6 +187,7 @@ Strict Rules:
       mode,
       interactionMedium,
       resumeText: safeResume,
+      totalQuestions: parsedTotalQuestions,
       questions: [{
         question: firstQuestionText.trim(),
         difficulty: "easy",
@@ -194,10 +200,11 @@ Strict Rules:
       creditsLeft: user.credits,
       userName: user.name,
       questions: interview.questions,
-      interactionMedium: interview.interactionMedium
+      interactionMedium: interview.interactionMedium,
+      totalQuestions: interview.totalQuestions || 5,
+      mode: interview.mode
     });
   } catch (error) {
-    console.error("generateQuestion Error:", error);
     return res.status(500).json({message:`failed to create interview ${error.message}`})
   }
 }
@@ -213,7 +220,7 @@ export const submitAnswer = async (req, res) => {
     }
 
     const question = interview.questions[questionIndex]
-    const totalQuestions = 5;
+    const totalQuestions = interview.totalQuestions || 5;
     const nextIndex = questionIndex + 1;
     const hasNextQuestion = nextIndex < totalQuestions;
 
@@ -254,25 +261,29 @@ ${interview.questions.map(q => `- ${q.question}`).join("\n")}
 
 Return ONLY the next question or hint text. Do NOT add greetings, introductory text, explanations, or JSON formatting.`;
 
-        const nextQuestionText = await askAi([
-          { role: "system", content: systemPrompt },
-          { role: "user", content: "Please generate the next question." }
-        ]);
-
-        if (nextQuestionText && nextQuestionText.trim()) {
-          const nextQuestion = {
-            question: nextQuestionText.trim(),
-            difficulty: nextDifficulty,
-            timeLimit: nextTimeLimit,
-          };
-          interview.questions.push(nextQuestion);
-          await interview.save();
-
-          return res.status(200).json({
-            feedback: question.feedback,
-            nextQuestion: nextQuestion
-          });
+        let nextQuestionText = "";
+        try {
+          nextQuestionText = await askAi([
+            { role: "system", content: systemPrompt },
+            { role: "user", content: "Please generate the next question." }
+          ]);
+        } catch (aiErr) {
+          console.warn("AI next question generation failed, using fallback:", aiErr);
         }
+
+        const fallbackText = "Could you please elaborate on your experience with this topic?";
+        const nextQuestion = {
+          question: (nextQuestionText && nextQuestionText.trim()) ? nextQuestionText.trim() : fallbackText,
+          difficulty: nextDifficulty,
+          timeLimit: nextTimeLimit,
+        };
+        interview.questions.push(nextQuestion);
+        await interview.save();
+
+        return res.status(200).json({
+          feedback: question.feedback,
+          nextQuestion: nextQuestion
+        });
       }
 
       return res.status(200).json({
@@ -335,8 +346,9 @@ Return strictly valid JSON format:
       question.score = parsed.finalScore || 0;
       question.feedback = parsed.feedback || "Good effort.";
 
+      const fallbackText = "Could you please elaborate on your experience with this topic?";
       const nextQuestion = {
-        question: (parsed.nextQuestionText || "").trim(),
+        question: (parsed.nextQuestionText || "").trim() || fallbackText,
         difficulty: nextDifficulty,
         timeLimit: nextTimeLimit,
       };
