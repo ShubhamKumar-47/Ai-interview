@@ -307,18 +307,23 @@ function Step2Interview({ interviewData, onFinish }) {
       autoNextTimeoutRef.current = null;
     }
 
+    const nextIdx = currentIndex + 1;
+
+    // The only valid completion condition is reaching totalQuestions limit
+    if (nextIdx >= totalQuestions) {
+      await finishInterview();
+      return;
+    }
+
+    // Safety guard: ensure the next question exists in the list before moving index
+    if (nextIdx >= questionsListRef.current.length) {
+      return;
+    }
+
     setAnswer("");
     setCode("// Write your solution here...\nfunction solution() {\n  \n}");
     setFeedback("");
     timerHandledRef.current = false;
-
-    const nextIdx = currentIndex + 1;
-
-    // Check if we are finished based on synchronous ref array length
-    if (nextIdx >= totalQuestions || nextIdx >= questionsListRef.current.length) {
-      await finishInterview();
-      return;
-    }
 
     const nextQuestionItem = questionsListRef.current[nextIdx];
     const nextTimeLimit = nextQuestionItem?.timeLimit || (mode === "Coding" ? 180 : 60);
