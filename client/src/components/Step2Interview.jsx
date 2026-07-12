@@ -20,6 +20,7 @@ const VALID_TRANSITIONS = {
   RECONNECTING: ["LISTENING", "STOPPING", "IDLE", "ERROR", "SPEAKING"]
 };
 
+
 function Step2Interview({ interviewData, onFinish }) {
   const { interviewId, questions: initialQuestions, userName, mode, interactionMedium = "Voice", totalQuestions = 5 } = interviewData;
 
