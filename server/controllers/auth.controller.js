@@ -24,7 +24,11 @@ export const googleAuth = async (req, res) => {
         email,
         photo: photo || "",
         provider: "google",
+        credits: 100,
       });
+    } else if (!user.isPremium && user.credits > 100) {
+      user.credits = 100;
+      await user.save();
     }
 
     // 🔥 generate JWT
