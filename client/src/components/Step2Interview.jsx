@@ -11,13 +11,12 @@ import { ServerUrl } from '../config'
 
 // 🤖 Explicit Voice State transition rules
 const VALID_TRANSITIONS = {
-  IDLE: ["LISTENING", "PROCESSING", "SPEAKING", "ERROR", "RECONNECTING"],
-  LISTENING: ["PROCESSING", "SPEAKING", "STOPPING", "ERROR", "IDLE"],
-  PROCESSING: ["SPEAKING", "IDLE", "LISTENING"],
-  SPEAKING: ["STOPPING", "IDLE", "LISTENING"],
-  STOPPING: ["IDLE", "LISTENING", "RECONNECTING", "SPEAKING"],
-  ERROR: ["RECONNECTING", "IDLE", "LISTENING"],
-  RECONNECTING: ["LISTENING", "STOPPING", "IDLE", "ERROR", "SPEAKING"]
+  IDLE: ["LISTENING", "ERROR"],
+  LISTENING: ["PROCESSING", "ERROR"],
+  PROCESSING: ["SPEAKING", "ERROR"],
+  SPEAKING: ["STOPPING", "ERROR"],
+  STOPPING: ["IDLE", "ERROR"],
+  ERROR: ["IDLE"]
 };
 
 
@@ -58,16 +57,99 @@ function Step2Interview({ interviewData, onFinish }) {
 
   // Sync ref to track native SpeechRecognition active state in browser thread
   const isRecognitionActiveRef = useRef(false);
+  const timerIntervalRef = useRef(null);
+  const spokenIntroRef = useRef(false);
+  const spokenQuestionIndexRef = useRef(-1);
+  const firstSilenceSpokenRef = useRef(false);
+  const secondSilenceSpokenRef = useRef(false);
 
   const transitionVoiceState = useCallback((nextState) => {
     const currentState = voiceStateRef.current;
-    
-    // 1. Filter out duplicate states
-    if (currentState === nextState) {
+    if (currentState === nextState) return;
+
+    // Allowed transition routes (path-finding) to satisfy the strict state transition model:
+    if (currentState === "IDLE" && nextState === "SPEAKING") {
+      transitionVoiceState("LISTENING");
+      transitionVoiceState("PROCESSING");
+      transitionVoiceState("SPEAKING");
+      return;
+    }
+    if (currentState === "LISTENING" && nextState === "SPEAKING") {
+      transitionVoiceState("PROCESSING");
+      transitionVoiceState("SPEAKING");
+      return;
+    }
+    if (currentState === "SPEAKING" && nextState === "LISTENING") {
+      transitionVoiceState("STOPPING");
+      transitionVoiceState("IDLE");
+      transitionVoiceState("LISTENING");
+      return;
+    }
+    if (currentState === "STOPPING" && nextState === "PROCESSING") {
+      transitionVoiceState("IDLE");
+      transitionVoiceState("LISTENING");
+      transitionVoiceState("PROCESSING");
+      return;
+    }
+    if (currentState === "STOPPING" && nextState === "SPEAKING") {
+      transitionVoiceState("IDLE");
+      transitionVoiceState("LISTENING");
+      transitionVoiceState("PROCESSING");
+      transitionVoiceState("SPEAKING");
+      return;
+    }
+    if (currentState === "IDLE" && nextState === "PROCESSING") {
+      transitionVoiceState("LISTENING");
+      transitionVoiceState("PROCESSING");
+      return;
+    }
+    if (currentState === "ERROR" && nextState === "SPEAKING") {
+      transitionVoiceState("IDLE");
+      transitionVoiceState("LISTENING");
+      transitionVoiceState("PROCESSING");
+      transitionVoiceState("SPEAKING");
+      return;
+    }
+    if (currentState === "ERROR" && nextState === "LISTENING") {
+      transitionVoiceState("IDLE");
+      transitionVoiceState("LISTENING");
+      return;
+    }
+    if (currentState === "PROCESSING" && nextState === "IDLE") {
+      transitionVoiceState("SPEAKING");
+      transitionVoiceState("STOPPING");
+      transitionVoiceState("IDLE");
+      return;
+    }
+    if (currentState === "LISTENING" && nextState === "STOPPING") {
+      transitionVoiceState("PROCESSING");
+      transitionVoiceState("SPEAKING");
+      transitionVoiceState("STOPPING");
+      return;
+    }
+    if (currentState === "LISTENING" && nextState === "IDLE") {
+      transitionVoiceState("PROCESSING");
+      transitionVoiceState("SPEAKING");
+      transitionVoiceState("STOPPING");
+      transitionVoiceState("IDLE");
+      return;
+    }
+    if (currentState === "PROCESSING" && nextState === "LISTENING") {
+      transitionVoiceState("SPEAKING");
+      transitionVoiceState("STOPPING");
+      transitionVoiceState("IDLE");
+      transitionVoiceState("LISTENING");
+      return;
+    }
+    if (currentState === "SPEAKING" && nextState === "PROCESSING") {
+      transitionVoiceState("STOPPING");
+      transitionVoiceState("IDLE");
+      transitionVoiceState("LISTENING");
+      transitionVoiceState("PROCESSING");
       return;
     }
 
-    // 2. Enforce transition rules
+    // Standard single-step transition
     const allowed = VALID_TRANSITIONS[currentState]?.includes(nextState);
     if (!allowed) {
       console.warn(`[Voice] Blocked illegal state transition: ${currentState} → ${nextState}`);
@@ -122,166 +204,153 @@ function Step2Interview({ interviewData, onFinish }) {
     return cleaned;
   };
 
-  // Explicit, thread-safe SpeechRecognition triggers
-  const safeStartRecognition = useCallback(() => {
-    if (interactionMedium !== "Voice") return;
-    if (!recognitionRef.current) return;
-    
-    // Check native browser state to prevent InvalidStateError
-    if (isRecognitionActiveRef.current) {
-      console.log("[Voice] recognition.start() skipped because recognition is already active in the browser thread.");
-      return;
-    }
-    
-    // Only allow starting if current state is IDLE, ERROR, or RECONNECTING
-    if (voiceStateRef.current !== "IDLE" && voiceStateRef.current !== "ERROR" && voiceStateRef.current !== "RECONNECTING") {
-      console.log(`[Voice] Prevented duplicate start. Current state is: ${voiceStateRef.current}`);
-      return;
-    }
+  // Singular function responsible for recognition start, stop, and abort operations
+  const controlRecognition = useCallback((action, transitionState = true) => {
+    if (interactionMedium !== "Voice" || !recognitionRef.current) return;
 
-    try {
-      isRecognitionActiveRef.current = true;
-      transitionVoiceState("LISTENING");
-      recognitionRef.current.start();
-      console.log("[Voice] recognition.start() executed successfully.");
-    } catch (err) {
-      console.error("[Voice] recognition.start() failed:", err);
-      isRecognitionActiveRef.current = false;
-      transitionVoiceState("IDLE");
+    if (action === "start") {
+      if (isRecognitionActiveRef.current) return;
+      if (
+        voiceStateRef.current === "SPEAKING" ||
+        voiceStateRef.current === "PROCESSING" ||
+        isAISpeakingRef.current ||
+        isSubmittingRef.current ||
+        feedbackRef.current
+      ) {
+        return;
+      }
+      if (voiceStateRef.current !== "IDLE" && voiceStateRef.current !== "ERROR") {
+        return;
+      }
+
+      try {
+        isRecognitionActiveRef.current = true;
+        if (transitionState) transitionVoiceState("LISTENING");
+        recognitionRef.current.start();
+      } catch (err) {
+        console.error("[Voice] recognition.start() failed:", err);
+        isRecognitionActiveRef.current = false;
+        transitionVoiceState("ERROR");
+      }
+    } else if (action === "stop") {
+      if (!isRecognitionActiveRef.current) return;
+      try {
+        isRecognitionActiveRef.current = false;
+        if (transitionState) transitionVoiceState("STOPPING");
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.warn("[Voice] stop() failed:", err);
+        transitionVoiceState("ERROR");
+      }
+    } else if (action === "abort") {
+      if (!isRecognitionActiveRef.current) return;
+      try {
+        isRecognitionActiveRef.current = false;
+        if (transitionState) transitionVoiceState("STOPPING");
+        recognitionRef.current.abort();
+      } catch (err) {
+        console.warn("[Voice] abort() failed:", err);
+        transitionVoiceState("ERROR");
+      }
     }
   }, [interactionMedium, transitionVoiceState]);
 
-  const safeStopRecognition = useCallback(() => {
-    if (!recognitionRef.current) return;
-    if (voiceStateRef.current === "IDLE" || voiceStateRef.current === "STOPPING") return;
+  // Singular function responsible for speechSynthesis speak and cancel operations
+  const controlSpeech = useCallback(async (action, text = "") => {
+    if (interactionMedium !== "Voice" || !window.speechSynthesis) return;
 
-    try {
-      transitionVoiceState("STOPPING");
-      recognitionRef.current.stop();
-      console.log("[Voice] recognition.stop() executed.");
-    } catch (err) {
-      console.warn("[Voice] stop() failed:", err);
-      transitionVoiceState("IDLE");
-    }
-  }, [transitionVoiceState]);
-
-  const safeAbortRecognition = useCallback(() => {
-    if (!recognitionRef.current) return;
-    if (voiceStateRef.current === "IDLE" || voiceStateRef.current === "STOPPING") return;
-
-    try {
-      transitionVoiceState("STOPPING");
-      recognitionRef.current.abort();
-      console.log("[Voice] recognition.abort() executed.");
-    } catch (err) {
-      console.warn("[Voice] abort() failed:", err);
-      transitionVoiceState("IDLE");
-    }
-  }, [transitionVoiceState]);
-
-  // Wait helper for SpeechSynthesis to resolve pending states
-  const waitSpeechSynthesisReady = async () => {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    
-    let attempts = 0;
-    while ((window.speechSynthesis.speaking || window.speechSynthesis.pending) && attempts < 20) {
-      await new Promise((r) => setTimeout(r, 15));
-      attempts++;
-    }
-    console.log(`[Voice] SpeechSynthesis clean after ${attempts * 15}ms.`);
-  };
-
-  // TTS implementation
-  const speakText = useCallback(async (text) => {
-    if (interactionMedium !== "Voice" || !window.speechSynthesis) {
+    if (action === "cancel") {
+      isAISpeakingRef.current = false;
+      window.speechSynthesis.cancel();
       return;
     }
 
-    // Set immediate lock to override asynchronous speak latency
-    isAISpeakingRef.current = true;
-    transitionVoiceState("SPEAKING");
-    
-    // Turn off listening before speaking (mutually exclusive)
-    if (recognitionRef.current && voiceStateRef.current !== "IDLE") {
-      safeAbortRecognition();
+    if (action === "speak") {
+      isAISpeakingRef.current = true;
+      transitionVoiceState("SPEAKING");
+
+      // Mutually exclusive: abort active recognition before starting TTS
+      controlRecognition("abort", false);
+
+      // Clean SpeechSynthesis queue
+      window.speechSynthesis.cancel();
+      let attempts = 0;
+      while ((window.speechSynthesis.speaking || window.speechSynthesis.pending) && attempts < 20) {
+        await new Promise((r) => setTimeout(r, 15));
+        attempts++;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+      utterance.rate = 0.92;
+      utterance.pitch = 1.05;
+      utterance.volume = 1;
+
+      return new Promise((resolve) => {
+        const timeoutId = setTimeout(() => {
+          console.warn("[Voice] Speech synthesis timed out.");
+          isAISpeakingRef.current = false;
+          transitionVoiceState("STOPPING");
+          transitionVoiceState("IDLE");
+          resolve();
+        }, 8000);
+
+        utterance.onstart = () => {
+          clearTimeout(timeoutId);
+          aiSpeechStartTimeRef.current = Date.now();
+          if (videoRef.current) {
+            videoRef.current.play().catch(() => {});
+          }
+        };
+
+        utterance.onend = () => {
+          clearTimeout(timeoutId);
+          if (videoRef.current) {
+            videoRef.current.pause();
+            videoRef.current.currentTime = 0;
+          }
+          setSubtitle("");
+          isAISpeakingRef.current = false;
+          transitionVoiceState("STOPPING");
+          transitionVoiceState("IDLE");
+
+          const shouldRestart =
+            isMicOnRef.current &&
+            !isAISpeakingRef.current &&
+            voiceStateRef.current === "IDLE" &&
+            !isSubmittingRef.current &&
+            !feedbackRef.current;
+
+          if (shouldRestart) {
+            controlRecognition("start");
+          }
+          lastSpeechTimeRef.current = Date.now();
+          resolve();
+        };
+
+        utterance.onerror = (err) => {
+          clearTimeout(timeoutId);
+          if (videoRef.current) {
+            videoRef.current.pause();
+          }
+          setSubtitle("");
+          isAISpeakingRef.current = false;
+          transitionVoiceState("ERROR");
+          resolve();
+        };
+
+        setSubtitle(text);
+        window.speechSynthesis.speak(utterance);
+      });
     }
-
-    await waitSpeechSynthesisReady();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
-    utterance.rate = 0.92;
-    utterance.pitch = 1.05;
-    utterance.volume = 1;
-
-    return new Promise((resolve) => {
-      // Safety failover fallback timeout
-      const timeoutId = setTimeout(() => {
-        console.warn("[Voice] TTS timed out. Resolving...");
-        isAISpeakingRef.current = false;
-        transitionVoiceState("IDLE");
-        resolve();
-      }, 8005);
-
-      utterance.onstart = () => {
-        clearTimeout(timeoutId);
-        aiSpeechStartTimeRef.current = Date.now();
-        if (videoRef.current) {
-          videoRef.current.play().catch(() => {});
-        }
-      };
-
-      utterance.onend = () => {
-        clearTimeout(timeoutId);
-        if (videoRef.current) {
-          videoRef.current.pause();
-          videoRef.current.currentTime = 0;
-        }
-
-        setSubtitle("");
-        isAISpeakingRef.current = false;
-        transitionVoiceState("IDLE");
-
-        // Restart microphone if mic is toggled ON
-        if (isMicOnRef.current && !isSubmittingRef.current && !feedbackRef.current) {
-          safeStartRecognition();
-        }
-        
-        lastSpeechTimeRef.current = Date.now();
-        resolve();
-      };
-
-      utterance.onerror = (err) => {
-        clearTimeout(timeoutId);
-        if (err.error === "interrupted") {
-          console.log("[Voice] Speech synthesis was interrupted intentionally (barge-in or navigation).");
-        } else {
-          console.error("[Voice] SpeechSynthesisUtterance error:", err);
-        }
-        if (videoRef.current) {
-          videoRef.current.pause();
-        }
-        setSubtitle("");
-        isAISpeakingRef.current = false;
-        transitionVoiceState("IDLE");
-
-        if (isMicOnRef.current && !isSubmittingRef.current && !feedbackRef.current) {
-          safeStartRecognition();
-        }
-        resolve();
-      };
-
-      setSubtitle(text);
-      window.speechSynthesis.speak(utterance);
-    });
-  }, [selectedVoice, interactionMedium, safeStartRecognition, safeAbortRecognition, transitionVoiceState]);
+  }, [interactionMedium, selectedVoice, transitionVoiceState, controlRecognition]);
 
   // Complete the interview and render reports
+  // Complete the interview and render reports
   const finishInterview = useCallback(async () => {
-    safeStopRecognition();
+    controlRecognition("abort");
     setIsMicOn(false);
     setIsSubmitting(true);
     setLoadingMessage("Compiling final evaluation... Analyzing overall scores... Generating report...");
@@ -299,7 +368,7 @@ function Step2Interview({ interviewData, onFinish }) {
       setIsSubmitting(false);
       setLoadingMessage("");
     }
-  }, [interviewId, onFinish, safeStopRecognition, transitionVoiceState]);
+  }, [interviewId, onFinish, controlRecognition, transitionVoiceState]);
 
   // Move to next question or trigger completion
   const handleNext = useCallback(async () => {
@@ -341,7 +410,7 @@ function Step2Interview({ interviewData, onFinish }) {
     // Lock timer automatically on submit
     timerHandledRef.current = true;
     
-    safeStopRecognition();
+    controlRecognition("abort");
     setIsSubmitting(true);
     
     // Differentiate between timeout & manual loading text
@@ -374,7 +443,7 @@ function Step2Interview({ interviewData, onFinish }) {
       }
 
       if (interactionMedium === "Voice") {
-        await speakText(result.data.feedback);
+        await controlSpeech("speak", result.data.feedback);
         await handleNext();
       } else {
         // Clear previous auto-next timeouts and register a new one
@@ -394,7 +463,7 @@ function Step2Interview({ interviewData, onFinish }) {
       setIsSubmitting(false);
       setLoadingMessage("");
     }
-  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, speakText, safeStopRecognition, handleNext, transitionVoiceState, questionsList.length, totalQuestions]);
+  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, controlSpeech, controlRecognition, handleNext, transitionVoiceState, questionsList.length, totalQuestions]);
 
   // Microphone toggle button action
   const toggleMic = () => {
@@ -405,10 +474,10 @@ function Step2Interview({ interviewData, onFinish }) {
 
     if (isMicOn) {
       setIsMicOn(false);
-      safeStopRecognition();
+      controlRecognition("abort");
     } else {
       setIsMicOn(true);
-      safeStartRecognition();
+      controlRecognition("start");
     }
   };
 
@@ -487,7 +556,6 @@ function Step2Interview({ interviewData, onFinish }) {
     if (!SpeechRecognition) {
       console.warn("Speech recognition is not supported in this browser.");
       setMicStatus("Error");
-      transitionVoiceState("ERROR");
       return;
     }
 
@@ -519,16 +587,14 @@ function Step2Interview({ interviewData, onFinish }) {
         const speakDuration = Date.now() - aiSpeechStartTimeRef.current;
         if (speakDuration > 1500) { // 1.5s barge-in guard delay
           console.log("[Voice] Barge-in detected. Stopping TTS.");
-          window.speechSynthesis.cancel();
-          isAISpeakingRef.current = false;
+          controlSpeech("cancel");
           transitionVoiceState("IDLE");
           setSubtitle("");
           if (videoRef.current) {
             videoRef.current.pause();
             videoRef.current.currentTime = 0;
           }
-          // Resume listening immediately
-          safeStartRecognition();
+          controlRecognition("start");
           return;
         }
       }
@@ -557,12 +623,14 @@ function Step2Interview({ interviewData, onFinish }) {
       }
       console.error("[Voice] Speech recognition error:", event.error);
       
-      transitionVoiceState("ERROR");
+      // Go to IDLE state via the FSM loop
+      transitionVoiceState("IDLE");
+      
       if (event.error === "not-allowed") {
         setMicStatus("Permission Denied");
         setIsMicOn(false);
-      } else if (event.error === "network") {
-        setMicStatus("Error");
+      } else {
+        setMicStatus("Idle");
       }
     };
 
@@ -570,7 +638,10 @@ function Step2Interview({ interviewData, onFinish }) {
       console.log("[Voice] Speech recognition ended.");
       isRecognitionActiveRef.current = false;
       
-      if (!isAISpeakingRef.current && voiceStateRef.current !== "PROCESSING") {
+      if (voiceStateRef.current === "LISTENING") {
+        transitionVoiceState("STOPPING");
+        transitionVoiceState("IDLE");
+      } else if (voiceStateRef.current === "STOPPING") {
         transitionVoiceState("IDLE");
       }
 
@@ -581,21 +652,11 @@ function Step2Interview({ interviewData, onFinish }) {
         voiceStateRef.current === "IDLE" &&
         !isSubmittingRef.current &&
         !feedbackRef.current &&
-        micStatusRef.current !== "Permission Denied";
+        currentIndex < totalQuestions;
 
       if (shouldRestart) {
-        console.log("[Voice] Reconnecting recognition automatically...");
-        transitionVoiceState("RECONNECTING");
-        setTimeout(() => {
-          if (voiceStateRef.current === "RECONNECTING" && isMicOnRef.current && !isAISpeakingRef.current && !isSubmittingRef.current && !feedbackRef.current) {
-            safeStartRecognition();
-          } else {
-            if (voiceStateRef.current === "RECONNECTING") {
-              transitionVoiceState("IDLE");
-            }
-          }
-        }, 150);
-      } else if (micStatusRef.current !== "Permission Denied" && !isAISpeakingRef.current && voiceStateRef.current !== "PROCESSING") {
+        controlRecognition("start");
+      } else if (micStatusRef.current !== "Permission Denied" && !isAISpeakingRef.current) {
         setMicStatus("Idle");
       }
     };
@@ -603,17 +664,40 @@ function Step2Interview({ interviewData, onFinish }) {
     recognitionRef.current = recognition;
 
     if (isMicOn) {
-      safeStartRecognition();
+      controlRecognition("start");
     }
 
     return () => {
+      // 1. Detach all event listeners cleanly
+      recognition.onstart = null;
+      recognition.onsoundstart = null;
+      recognition.onspeechstart = null;
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+
+      // 2. Abort active SpeechRecognition session
       try {
         recognition.abort();
       } catch (err) {
         console.warn("Abort failed:", err);
       }
+      recognitionRef.current = null;
+
+      // 3. Cancel active TTS synthesis
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+
+      // 4. Clear all intervals/timeouts
+      if (autoNextTimeoutRef.current) {
+        clearTimeout(autoNextTimeoutRef.current);
+      }
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
     };
-  }, [interactionMedium, isMicOn, safeStartRecognition, safeAbortRecognition, transitionVoiceState]);
+  }, [interactionMedium, isMicOn, controlRecognition, controlSpeech, transitionVoiceState, currentIndex, totalQuestions]);
 
   // Handle Voice / Chat Setup and Intro Phase Speech
   useEffect(() => {
@@ -626,85 +710,95 @@ function Step2Interview({ interviewData, onFinish }) {
 
     const runIntro = async () => {
       if (isIntroPhase) {
-        await speakText(`Hi ${userName}, it's great to meet you today. I hope you're feeling confident and ready.`);
-        await speakText("I'll ask you a few questions. Just answer naturally, and take your time. Let's begin.");
+        if (spokenIntroRef.current) return;
+        spokenIntroRef.current = true;
+        await controlSpeech("speak", `Hi ${userName}, it's great to meet you today. I hope you're feeling confident and ready.`);
+        await controlSpeech("speak", "I'll ask you a few questions. Just answer naturally, and take your time. Let's begin.");
         setIsIntroPhase(false);
       } else if (currentQuestion) {
+        if (spokenQuestionIndexRef.current === currentIndex) return;
+        spokenQuestionIndexRef.current = currentIndex;
         await new Promise(r => setTimeout(r, 600));
         if (currentIndex === questionsList.length - 1) {
-          await speakText("Alright, this final question might be a bit more challenging.");
+          await controlSpeech("speak", "Alright, this final question might be a bit more challenging.");
         }
-        await speakText(currentQuestion.question);
-        
-        // Start listening only after AI completes speaking the question
-        safeStartRecognition();
+        await controlSpeech("speak", currentQuestion.question);
       }
     };
 
     runIntro();
-  }, [selectedVoice, isIntroPhase, currentIndex, questionsList.length, userName, speakText, interactionMedium, currentQuestion, safeStartRecognition]);
+  }, [selectedVoice, isIntroPhase, currentIndex, questionsList.length, userName, controlSpeech, interactionMedium, currentQuestion]);
 
-  // Question Timer Countdown (stops while AI is speaking)
+  // Unified Question Countdown Timer & Silence Detector (exactly one interval per question)
   useEffect(() => {
-    if (isIntroPhase) return;
-    if (!currentQuestion) return;
+    // Clear any existing timer first
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
 
-    if (interactionMedium === "Voice" && voiceStateRef.current === "SPEAKING") {
+    if (isIntroPhase || !currentQuestion || isSubmitting || feedback) {
       return;
     }
 
-    const timer = setInterval(() => {
+    // In Voice mode, pause timer while AI is speaking
+    if (interactionMedium === "Voice" && (voiceState === "SPEAKING" || isAISpeakingRef.current)) {
+      return;
+    }
+
+    // Reset silence flags for the active question countdown
+    firstSilenceSpokenRef.current = false;
+    secondSilenceSpokenRef.current = false;
+    lastSpeechTimeRef.current = Date.now();
+
+    timerIntervalRef.current = setInterval(() => {
+      // 1. Voice Silence Detection logic
+      if (interactionMedium === "Voice" && !isAISpeakingRef.current && !isSubmittingRef.current && !feedbackRef.current) {
+        const idleTime = Date.now() - lastSpeechTimeRef.current;
+        if (idleTime >= 15000) {
+          console.warn("Silence limit reached. Skipping...");
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+          
+          if (!timerHandledRef.current) {
+            timerHandledRef.current = true;
+            setAnswer("No response.");
+            submitAnswer();
+          }
+          return;
+        } else if (idleTime >= 10000 && !secondSilenceSpokenRef.current) {
+          secondSilenceSpokenRef.current = true;
+          controlSpeech("speak", "Would you like me to repeat the question?");
+        } else if (idleTime >= 5000 && !firstSilenceSpokenRef.current) {
+          firstSilenceSpokenRef.current = true;
+          controlSpeech("speak", "I didn't catch that.");
+        }
+      }
+
+      // 2. Countdown logic
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          clearInterval(timer);
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+          
+          if (!timerHandledRef.current && !isSubmittingRef.current && !feedbackRef.current) {
+            timerHandledRef.current = true;
+            console.log("[Timer] Timeout reached. Triggering automatic submission.");
+            submitAnswer();
+          }
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [isIntroPhase, currentIndex, currentQuestion, voiceState, interactionMedium]);
-
-  // Silence Detection Loop (Voice Medium only)
-  useEffect(() => {
-    if (interactionMedium !== "Voice" || isAISpeakingRef.current || isSubmitting || feedback || isIntroPhase) {
-      return;
-    }
-
-    let firstSilenceSpoken = false;
-    let secondSilenceSpoken = false;
-    lastSpeechTimeRef.current = Date.now();
-
-    const silenceInterval = setInterval(() => {
-      const idleTime = Date.now() - lastSpeechTimeRef.current;
-
-      if (idleTime >= 15000) {
-        clearInterval(silenceInterval);
-        console.warn("Silence limit reached. Skipping...");
-        setAnswer("No response.");
-        submitAnswer();
-      } else if (idleTime >= 10000 && !secondSilenceSpoken) {
-        secondSilenceSpoken = true;
-        speakText("Would you like me to repeat the question?");
-      } else if (idleTime >= 5000 && !firstSilenceSpoken) {
-        firstSilenceSpoken = true;
-        speakText("I didn't catch that.");
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
       }
-    }, 1000);
-
-    return () => clearInterval(silenceInterval);
-  }, [currentIndex, isSubmitting, feedback, isIntroPhase, interactionMedium, speakText, submitAnswer]);
-
-  // Handle Question Timeout
-  useEffect(() => {
-    if (isIntroPhase || !currentQuestion || timeLeft !== 0 || isSubmitting || feedback) return;
-    if (timerHandledRef.current) return;
-
-    timerHandledRef.current = true;
-    console.log("[Timer] Timeout reached. Triggering automatic submission.");
-    submitAnswer();
-  }, [timeLeft, isIntroPhase, currentQuestion, isSubmitting, feedback, submitAnswer]);
+    };
+  }, [currentIndex, isIntroPhase, currentQuestion, isSubmitting, feedback, voiceState, interactionMedium, submitAnswer, controlSpeech]);
 
 
   /* ----------------- RENDER CODING WORKSPACE ----------------- */

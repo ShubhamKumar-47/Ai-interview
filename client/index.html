@@ -1,46 +1,53 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/img1.png" />
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#10b981" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MockVerse — Premium AI Mock Interview SaaS Platform</title>
-    
-    <!-- SEO Meta Tags -->
-    <meta name="description" content="Premium SaaS platform for AI mock interviews. Practice coding, HR, and technical rounds with voice synthesis and real-time complexity analytics." />
-    <meta name="keywords" content="AI interview prep, mock interviews, coding preparation, technical interviews, resume analyzer, SaaS" />
-    
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://mockverse.online" />
-    <meta property="og:title" content="MockVerse — Premium AI Interview Practice Platform" />
-    <meta property="og:description" content="SaaS platform for AI mock interviews. Practice coding, HR, and technical rounds with real-time feedback." />
-    <meta property="og:image" content="/img1.png" />
 
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://mockverse.online" />
-    <meta property="twitter:title" content="MockVerse — Premium AI Interview Practice Platform" />
-    <meta property="twitter:description" content="SaaS platform for AI mock interviews. Practice coding, HR, and technical rounds with real-time feedback." />
-    <meta property="twitter:image" content="/img1.png" />
-  </head>
-  <body>
-    <div id="root"></div>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/img1.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#10b981" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MockVerse - AI Mock Interview Platform</title>
 
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-    <script type="module" src="/src/main.jsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then((reg) => {
-            console.log('ServiceWorker registration successful with scope: ', reg.scope);
-          }, (err) => {
-            console.error('ServiceWorker registration failed: ', err);
-          });
+  <!-- SEO Meta Tags -->
+  <meta name="description"
+    content="Platform for AI mock interviews. Practice coding, HR, and technical rounds with voice synthesis and real-time complexity analytics." />
+  <meta name="keywords"
+    content="AI interview prep, mock interviews, coding preparation, technical interviews, resume analyzer, platform" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://mockverse.online" />
+  <meta property="og:title" content="MockVerse — AI Mock Interview Platform" />
+  <meta property="og:description"
+    content="Platform for AI mock interviews. Practice coding, HR, and technical rounds with real-time feedback." />
+  <meta property="og:image" content="/img1.png" />
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:url" content="https://mockverse.online" />
+  <meta property="twitter:title" content="MockVerse — AI Mock Interview Platform" />
+  <meta property="twitter:description"
+    content="Platform for AI mock interviews. Practice coding, HR, and technical rounds with real-time feedback." />
+  <meta property="twitter:image" content="/img1.png" />
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script type="module" src="/src/main.jsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+          console.log('ServiceWorker registration successful with scope: ', reg.scope);
+        }, (err) => {
+          console.error('ServiceWorker registration failed: ', err);
         });
-      }
-    </script>
-  </body>
+      });
+    }
+  </script>
+</body>
+
 </html>

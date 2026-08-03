@@ -24,12 +24,23 @@ function App() {
   useEffect(() => {
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Firebase user state changed:", user)
 
-      console.log("Firebase user:", user)
-
-      // ❌ Not logged in
+      // ❌ Not logged in via Firebase -> check backend cookie session fallback
       if (!user) {
-        console.log("User not logged in, skipping current-user fetch")
+        try {
+          const result = await axios.get(
+            ServerUrl + "/api/user/current-user",
+            { withCredentials: true }
+          )
+          if (result.data && result.data._id) {
+            console.log("Session verified via backend cookie:", result.data)
+            dispatch(setUserData(result.data))
+            return
+          }
+        } catch {
+          console.log("No active backend cookie session found")
+        }
         dispatch(setUserData(null))
         return
       }

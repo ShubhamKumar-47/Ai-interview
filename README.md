@@ -1,6 +1,6 @@
-# MockVerse 🚀 — Production-Grade AI Interview Platform (SaaS)
+# MockVerse 🚀 — AI Mock Interview Platform
 
-> A premium, full-stack AI mock interview platform featuring stabilized voice engines with barge-in, just-in-time (JIT) adaptive questioning, split-screen IDE workspaces, credit payment systems, offline PWA access, and custom PDF analytics report downloads.
+> An AI mock interview platform featuring stabilized voice engines with barge-in, just-in-time (JIT) adaptive questioning, split-screen IDE workspaces, credit payment systems, offline PWA access, and custom PDF analytics report downloads.
 
 ---
 

@@ -113,8 +113,11 @@ export const devLogin = async (req, res) => {
         email: "developer@mockverse.online",
         photo: "",
         provider: "dev",
-        credits: 999,
+        credits: 100,
       });
+    } else if (user.credits > 100) {
+      user.credits = 100;
+      await user.save();
     }
 
     const token = genToken(user._id);
