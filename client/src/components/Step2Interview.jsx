@@ -8,6 +8,7 @@ import { BsArrowRight, BsExclamationTriangle } from 'react-icons/bs';
 import axios from "axios"
 import { motion as Motion } from "motion/react"
 import { ServerUrl } from '../config'
+import { useStreamingSpeechRecognition } from '../hooks/useStreamingSpeechRecognition'
 
 // 🤖 Explicit Voice State transition rules
 const VALID_TRANSITIONS = {
@@ -54,6 +55,30 @@ function Step2Interview({ interviewData, onFinish }) {
 
   // Sync ref immediately to block asynchronous SpeechSynthesis queuing delays
   const isAISpeakingRef = useRef(false);
+
+  // Real-time Streaming Speech Recognition Hook
+  const handleTranscriptChange = useCallback((text) => {
+    if (text) {
+      setAnswer(text);
+    }
+  }, []);
+
+  const {
+    isListening: isSpeechListening,
+    micStatus: streamingMicStatus,
+    partialTranscript,
+    combinedTranscript,
+    audioLevel,
+    latencyMs,
+    start: startStreamingSpeech,
+    stop: stopStreamingSpeech,
+    abort: abortStreamingSpeech,
+    resetTranscript
+  } = useStreamingSpeechRecognition({
+    silenceTimeoutMs: 3000,
+    autoStart: false,
+    onTranscriptChange: handleTranscriptChange
+  });
 
   // Sync ref to track native SpeechRecognition active state in browser thread
   const isRecognitionActiveRef = useRef(false);
@@ -168,7 +193,6 @@ function Step2Interview({ interviewData, onFinish }) {
     }
   }, []);
 
-  const recognitionRef = useRef(null);
   const videoRef = useRef(null);
 
   // References to keep event handlers fresh
@@ -206,10 +230,9 @@ function Step2Interview({ interviewData, onFinish }) {
 
   // Singular function responsible for recognition start, stop, and abort operations
   const controlRecognition = useCallback((action, transitionState = true) => {
-    if (interactionMedium !== "Voice" || !recognitionRef.current) return;
+    if (interactionMedium !== "Voice") return;
 
     if (action === "start") {
-      if (isRecognitionActiveRef.current) return;
       if (
         voiceStateRef.current === "SPEAKING" ||
         voiceStateRef.current === "PROCESSING" ||
@@ -219,41 +242,23 @@ function Step2Interview({ interviewData, onFinish }) {
       ) {
         return;
       }
-      if (voiceStateRef.current !== "IDLE" && voiceStateRef.current !== "ERROR") {
-        return;
-      }
 
-      try {
-        isRecognitionActiveRef.current = true;
-        if (transitionState) transitionVoiceState("LISTENING");
-        recognitionRef.current.start();
-      } catch (err) {
-        console.error("[Voice] recognition.start() failed:", err);
-        isRecognitionActiveRef.current = false;
-        transitionVoiceState("ERROR");
-      }
+      isRecognitionActiveRef.current = true;
+      if (transitionState) transitionVoiceState("LISTENING");
+      setMicStatus("Listening");
+      startStreamingSpeech();
     } else if (action === "stop") {
-      if (!isRecognitionActiveRef.current) return;
-      try {
-        isRecognitionActiveRef.current = false;
-        if (transitionState) transitionVoiceState("STOPPING");
-        recognitionRef.current.stop();
-      } catch (err) {
-        console.warn("[Voice] stop() failed:", err);
-        transitionVoiceState("ERROR");
-      }
+      isRecognitionActiveRef.current = false;
+      if (transitionState) transitionVoiceState("STOPPING");
+      setMicStatus("Idle");
+      stopStreamingSpeech();
     } else if (action === "abort") {
-      if (!isRecognitionActiveRef.current) return;
-      try {
-        isRecognitionActiveRef.current = false;
-        if (transitionState) transitionVoiceState("STOPPING");
-        recognitionRef.current.abort();
-      } catch (err) {
-        console.warn("[Voice] abort() failed:", err);
-        transitionVoiceState("ERROR");
-      }
+      isRecognitionActiveRef.current = false;
+      if (transitionState) transitionVoiceState("STOPPING");
+      setMicStatus("Idle");
+      abortStreamingSpeech();
     }
-  }, [interactionMedium, transitionVoiceState]);
+  }, [interactionMedium, transitionVoiceState, startStreamingSpeech, stopStreamingSpeech, abortStreamingSpeech]);
 
   // Singular function responsible for speechSynthesis speak and cancel operations
   const controlSpeech = useCallback(async (action, text = "") => {
@@ -331,6 +336,7 @@ function Step2Interview({ interviewData, onFinish }) {
         };
 
         utterance.onerror = (err) => {
+          console.warn("[Voice] Speech synthesis error:", err);
           clearTimeout(timeoutId);
           if (videoRef.current) {
             videoRef.current.pause();
@@ -347,7 +353,6 @@ function Step2Interview({ interviewData, onFinish }) {
     }
   }, [interactionMedium, selectedVoice, transitionVoiceState, controlRecognition]);
 
-  // Complete the interview and render reports
   // Complete the interview and render reports
   const finishInterview = useCallback(async () => {
     controlRecognition("abort");
@@ -391,6 +396,7 @@ function Step2Interview({ interviewData, onFinish }) {
     }
 
     setAnswer("");
+    resetTranscript("");
     setCode("// Write your solution here...\nfunction solution() {\n  \n}");
     setFeedback("");
     timerHandledRef.current = false;
@@ -401,7 +407,7 @@ function Step2Interview({ interviewData, onFinish }) {
     setCurrentIndex(nextIdx);
     setTimeLeft(nextTimeLimit);
     transitionVoiceState("IDLE");
-  }, [currentIndex, mode, finishInterview, transitionVoiceState, totalQuestions]);
+  }, [currentIndex, mode, finishInterview, transitionVoiceState, totalQuestions, resetTranscript]);
 
   // Submit current answer to the backend
   const submitAnswer = useCallback(async () => {
@@ -463,16 +469,16 @@ function Step2Interview({ interviewData, onFinish }) {
       setIsSubmitting(false);
       setLoadingMessage("");
     }
-  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, controlSpeech, controlRecognition, handleNext, transitionVoiceState, questionsList.length, totalQuestions]);
+  }, [interviewId, currentIndex, answer, code, mode, timeLeft, interactionMedium, controlSpeech, controlRecognition, handleNext, transitionVoiceState]);
 
   // Microphone toggle button action
   const toggleMic = () => {
-    if (micStatus === "Permission Denied") {
+    if (micStatus === "Permission Denied" || streamingMicStatus === "Permission Denied") {
       alert("Microphone permission was denied. Please check your browser settings.");
       return;
     }
 
-    if (isMicOn) {
+    if (isMicOn || isSpeechListening) {
       setIsMicOn(false);
       controlRecognition("abort");
     } else {
@@ -548,156 +554,42 @@ function Step2Interview({ interviewData, onFinish }) {
     };
   }, []);
 
-  // Initialize SpeechRecognition
+  // Real-time Streaming Barge-in & Auto-start Controller
   useEffect(() => {
     if (interactionMedium !== "Voice") return;
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn("Speech recognition is not supported in this browser.");
-      setMicStatus("Error");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    recognition.onstart = () => {
-      isRecognitionActiveRef.current = true;
-      transitionVoiceState("LISTENING");
-      setMicStatus("Listening");
-      lastSpeechTimeRef.current = Date.now();
-    };
-
-    recognition.onsoundstart = () => {
-      lastSpeechTimeRef.current = Date.now();
-    };
-
-    recognition.onspeechstart = () => {
-      lastSpeechTimeRef.current = Date.now();
-    };
-
-    recognition.onresult = (event) => {
-      lastSpeechTimeRef.current = Date.now();
-
-      // Handle Barge-in (candidate interrupting AI)
-      if (isAISpeakingRef.current) {
-        const speakDuration = Date.now() - aiSpeechStartTimeRef.current;
-        if (speakDuration > 1500) { // 1.5s barge-in guard delay
-          console.log("[Voice] Barge-in detected. Stopping TTS.");
-          controlSpeech("cancel");
-          transitionVoiceState("IDLE");
-          setSubtitle("");
-          if (videoRef.current) {
-            videoRef.current.pause();
-            videoRef.current.currentTime = 0;
-          }
-          controlRecognition("start");
-          return;
-        }
-      }
-
-      // Capture final transcription
-      let finalTranscript = "";
-
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-
-      if (finalTranscript) {
-        setAnswer((prev) => {
-          const nextVal = prev + " " + finalTranscript;
-          return nextVal.trim();
-        });
-      }
-    };
-
-    recognition.onerror = (event) => {
-      if (event.error === "aborted") {
-        console.log("[Voice] Recognition aborted intentionally.");
-        return;
-      }
-      console.error("[Voice] Speech recognition error:", event.error);
-      
-      // Go to IDLE state via the FSM loop
-      transitionVoiceState("IDLE");
-      
-      if (event.error === "not-allowed") {
-        setMicStatus("Permission Denied");
-        setIsMicOn(false);
-      } else {
-        setMicStatus("Idle");
-      }
-    };
-
-    recognition.onend = () => {
-      console.log("[Voice] Speech recognition ended.");
-      isRecognitionActiveRef.current = false;
-      
-      if (voiceStateRef.current === "LISTENING") {
-        transitionVoiceState("STOPPING");
+    // Handle Streaming Barge-in (candidate speaking while AI is talking)
+    if (isAISpeakingRef.current && combinedTranscript) {
+      const speakDuration = Date.now() - aiSpeechStartTimeRef.current;
+      if (speakDuration > 1500) { // 1.5s barge-in guard delay
+        console.log("[Voice] Streaming Barge-in detected. Stopping TTS.");
+        controlSpeech("cancel");
         transitionVoiceState("IDLE");
-      } else if (voiceStateRef.current === "STOPPING") {
-        transitionVoiceState("IDLE");
-      }
-
-      // Reconnect/restart check
-      const shouldRestart =
-        isMicOnRef.current &&
-        !isAISpeakingRef.current &&
-        voiceStateRef.current === "IDLE" &&
-        !isSubmittingRef.current &&
-        !feedbackRef.current &&
-        currentIndex < totalQuestions;
-
-      if (shouldRestart) {
+        setSubtitle("");
+        if (videoRef.current) {
+          videoRef.current.pause();
+          videoRef.current.currentTime = 0;
+        }
         controlRecognition("start");
-      } else if (micStatusRef.current !== "Permission Denied" && !isAISpeakingRef.current) {
-        setMicStatus("Idle");
       }
-    };
+    }
+  }, [combinedTranscript, interactionMedium, controlSpeech, transitionVoiceState, controlRecognition]);
 
-    recognitionRef.current = recognition;
+  // Sync Microphone & Streaming STT state
+  useEffect(() => {
+    if (interactionMedium !== "Voice") return;
 
-    if (isMicOn) {
+    if (
+      isMicOn &&
+      !isAISpeakingRef.current &&
+      !isSubmitting &&
+      !feedback &&
+      !isIntroPhase &&
+      (voiceState === "IDLE" || voiceState === "ERROR")
+    ) {
       controlRecognition("start");
     }
-
-    return () => {
-      // 1. Detach all event listeners cleanly
-      recognition.onstart = null;
-      recognition.onsoundstart = null;
-      recognition.onspeechstart = null;
-      recognition.onresult = null;
-      recognition.onerror = null;
-      recognition.onend = null;
-
-      // 2. Abort active SpeechRecognition session
-      try {
-        recognition.abort();
-      } catch (err) {
-        console.warn("Abort failed:", err);
-      }
-      recognitionRef.current = null;
-
-      // 3. Cancel active TTS synthesis
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-
-      // 4. Clear all intervals/timeouts
-      if (autoNextTimeoutRef.current) {
-        clearTimeout(autoNextTimeoutRef.current);
-      }
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-      }
-    };
-  }, [interactionMedium, isMicOn, controlRecognition, controlSpeech, transitionVoiceState, currentIndex, totalQuestions]);
+  }, [interactionMedium, isMicOn, isIntroPhase, isSubmitting, feedback, voiceState, controlRecognition]);
 
   // Handle Voice / Chat Setup and Intro Phase Speech
   useEffect(() => {
@@ -971,8 +863,8 @@ function Step2Interview({ interviewData, onFinish }) {
             )}
           </div>
 
-          {/* Typing Area */}
-          <div className="flex-1 flex flex-col mt-4 min-h-[200px]">
+          {/* Typing / Streaming Area */}
+          <div className="flex-1 flex flex-col mt-4 min-h-[200px] relative">
             <textarea
               placeholder="Type your answer here or speak using the microphone..."
               onChange={(e) => setAnswer(e.target.value)}
@@ -980,22 +872,43 @@ function Step2Interview({ interviewData, onFinish }) {
               disabled={isSubmitting || !!feedback || isIntroPhase}
               className="flex-1 w-full bg-gray-50 p-4 sm:p-6 rounded-2xl resize-none outline-none border border-gray-200 focus:ring-2 focus:ring-emerald-500 transition text-gray-800 text-sm sm:text-base leading-relaxed"
             />
+            {/* Live Partial Transcript Streaming Badge */}
+            {interactionMedium === "Voice" && partialTranscript && (
+              <div className="mt-2 p-2.5 px-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-medium flex items-center justify-between shadow-xs animate-pulse">
+                <span className="truncate">Streaming: <span className="italic font-semibold text-emerald-900">"{partialTranscript}"</span></span>
+                <span className="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-md font-mono shrink-0 ml-2">
+                  Live &lt;{latencyMs || 140}ms
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Controls Footer */}
           {!feedback ? (
             <div className="flex items-center gap-4 mt-6">
               {interactionMedium === "Voice" && (
-                <Motion.button
-                  onClick={toggleMic}
-                  whileTap={{ scale: 0.9 }}
-                  disabled={isSubmitting || isIntroPhase}
-                  className={`w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full text-white shadow-lg transition-all ${
-                    isMicOn ? "bg-red-600 hover:bg-red-700" : "bg-black hover:bg-slate-800"
-                  } disabled:opacity-50`}
-                >
-                  {isMicOn ? <FaMicrophone size={20} className="animate-pulse" /> : <FaMicrophoneSlash size={20} />}
-                </Motion.button>
+                <div className="relative flex items-center justify-center">
+                  {/* Dynamic Audio Level Visualizer Ring */}
+                  {isMicOn && isSpeechListening && (
+                    <div
+                      className="absolute rounded-full bg-emerald-500/20 animate-ping pointer-events-none transition-all duration-75"
+                      style={{
+                        width: `${56 + (audioLevel * 0.4)}px`,
+                        height: `${56 + (audioLevel * 0.4)}px`
+                      }}
+                    />
+                  )}
+                  <Motion.button
+                    onClick={toggleMic}
+                    whileTap={{ scale: 0.9 }}
+                    disabled={isSubmitting || isIntroPhase}
+                    className={`relative z-10 w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center rounded-full text-white shadow-lg transition-all ${
+                      isMicOn ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/40 shadow-xl" : "bg-black hover:bg-slate-800"
+                    } disabled:opacity-50`}
+                  >
+                    {isMicOn ? <FaMicrophone size={20} className={audioLevel > 15 ? "scale-110 text-white" : "animate-pulse"} /> : <FaMicrophoneSlash size={20} />}
+                  </Motion.button>
+                </div>
               )}
 
               <Motion.button
@@ -1035,7 +948,7 @@ function Step2Interview({ interviewData, onFinish }) {
           )}
 
           {/* Micro status alerts for voice */}
-          {interactionMedium === "Voice" && micStatus === "Permission Denied" && (
+          {interactionMedium === "Voice" && (micStatus === "Permission Denied" || streamingMicStatus === "Permission Denied") && (
             <div className="mt-4 flex items-center gap-2 text-red-600 text-xs sm:text-sm bg-red-50 border border-red-200 p-3 rounded-xl">
               <BsExclamationTriangle size={16} />
               <span>Microphone access was denied. Please reload and allow permission.</span>
