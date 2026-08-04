@@ -5,7 +5,7 @@ import { combineFinalAndPartial, sanitizeTranscript } from '../services/speech/s
 
 export function useStreamingSpeechRecognition(options = {}) {
   const {
-    provider = STT_PROVIDERS.WEB_SPEECH,
+    provider = STT_PROVIDERS.DEEPGRAM,
     lang = 'en-US',
     silenceTimeoutMs = 3000,
     autoStart = false,
@@ -25,8 +25,13 @@ export function useStreamingSpeechRecognition(options = {}) {
   const providerRef = useRef(null);
   const finalTranscriptRef = useRef('');
   const partialTranscriptRef = useRef('');
+  const combinedTranscriptRef = useRef('');
   const isListeningRef = useRef(false);
   const pausedRef = useRef(false);
+
+  // requestAnimationFrame scheduling for 60 FPS UI throttling
+  const rafIdRef = useRef(null);
+  const pendingUpdateRef = useRef(false);
 
   // Audio Context & Level monitoring for mic visualizer
   const [audioLevel, setAudioLevel] = useState(0);
@@ -91,20 +96,43 @@ export function useStreamingSpeechRecognition(options = {}) {
     setAudioLevel(0);
   }, []);
 
-  // Updates and merges transcripts safely
+  // Throttled UI State Update using requestAnimationFrame (~60 FPS max)
+  const scheduleUIUpdate = useCallback(() => {
+    if (pendingUpdateRef.current) return;
+    pendingUpdateRef.current = true;
+
+    rafIdRef.current = requestAnimationFrame(() => {
+      pendingUpdateRef.current = false;
+      const currentCombined = combinedTranscriptRef.current;
+      const currentPartial = partialTranscriptRef.current;
+      const currentFinal = finalTranscriptRef.current;
+
+      setCombinedTranscript(currentCombined);
+      setPartialTranscript(currentPartial);
+      setFinalTranscript(currentFinal);
+
+      const date = new Date();
+      const timeStr = date.toTimeString().split(' ')[0];
+      const ms = String(date.getMilliseconds()).padStart(3, '0');
+      console.log(`[StreamingSTT] React Updated: ${timeStr}.${ms}`);
+
+      if (onTranscriptChange) {
+        onTranscriptChange(currentCombined);
+      }
+    });
+  }, [onTranscriptChange]);
+
+  // Updates and merges transcripts safely in refs
   const updateCombinedTranscript = useCallback((newFinal, newPartial) => {
     const merged = combineFinalAndPartial(newFinal, newPartial);
-    setCombinedTranscript(merged);
-    if (onTranscriptChange) {
-      onTranscriptChange(merged);
-    }
-  }, [onTranscriptChange]);
+    combinedTranscriptRef.current = merged;
+    scheduleUIUpdate();
+  }, [scheduleUIUpdate]);
 
   // Provider callback handlers
   const handlePartial = useCallback((partialText) => {
     if (pausedRef.current) return;
     partialTranscriptRef.current = partialText;
-    setPartialTranscript(partialText);
     updateCombinedTranscript(finalTranscriptRef.current, partialText);
   }, [updateCombinedTranscript]);
 
@@ -113,9 +141,6 @@ export function useStreamingSpeechRecognition(options = {}) {
     const updatedFinal = combineFinalAndPartial(finalTranscriptRef.current, finalSegment);
     finalTranscriptRef.current = updatedFinal;
     partialTranscriptRef.current = '';
-
-    setFinalTranscript(updatedFinal);
-    setPartialTranscript('');
     updateCombinedTranscript(updatedFinal, '');
   }, [updateCombinedTranscript]);
 
@@ -164,6 +189,9 @@ export function useStreamingSpeechRecognition(options = {}) {
     }
 
     return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
       stopAudioAnalyzer();
       if (providerRef.current) {
         providerRef.current.destroy();
@@ -218,6 +246,7 @@ export function useStreamingSpeechRecognition(options = {}) {
     const cleaned = sanitizeTranscript(initialText, false);
     finalTranscriptRef.current = cleaned;
     partialTranscriptRef.current = '';
+    combinedTranscriptRef.current = cleaned;
     setFinalTranscript(cleaned);
     setPartialTranscript('');
     setCombinedTranscript(cleaned);

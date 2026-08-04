@@ -132,9 +132,8 @@ export class WebSpeechProvider {
       }
 
       if (errorMsg === 'no-speech') {
-        // Normal silence timeout from browser engine - auto-recover if active
-        console.log('[StreamingSTT] Auto recovery from no-speech');
-        this.handleAutoRestart();
+        // Normal silence from user speaking - keep recognition alive continuously without stopping
+        console.log('[StreamingSTT] Silence observed - keeping recognition session active');
         return;
       }
 
