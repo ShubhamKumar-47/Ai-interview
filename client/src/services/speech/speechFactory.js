@@ -5,8 +5,22 @@ import { GoogleStreamingProvider } from './GoogleStreamingProvider.js';
 import { AssemblyAIProvider } from './AssemblyAIProvider.js';
 import { WhisperLiveProvider } from './WhisperLiveProvider.js';
 
+// Global registry of failed providers in the current session so they are NEVER retried
+const failedProviders = new Set();
+
+export function markProviderFailed(providerType) {
+  if (providerType && providerType !== STT_PROVIDERS.WEB_SPEECH) {
+    console.warn(`[StreamingSTT] Provider status: FAILED (${providerType}). Removing from active hierarchy.`);
+    failedProviders.add(providerType);
+  }
+}
+
+export function isProviderFailed(providerType) {
+  return failedProviders.has(providerType);
+}
+
 /**
- * Creates and initializes an STT provider instance based on exact configured priority hierarchy:
+ * Resolves next available STT provider according to strict priority:
  * 1. Deepgram Streaming API
  * 2. Google Cloud Streaming STT
  * 3. AssemblyAI Realtime
@@ -22,29 +36,51 @@ export function createSpeechProvider(preferredProvider = STT_PROVIDERS.DEEPGRAM,
     { type: STT_PROVIDERS.WEB_SPEECH, class: WebSpeechProvider }
   ];
 
-  // If a specific provider was requested, try it first
-  if (preferredProvider) {
-    const requested = providerList.find((p) => p.type === preferredProvider);
-    if (requested) {
-      const instance = new requested.class(options);
-      if (instance.isSupported()) {
-        console.log(`[StreamingSTT] Initialized Preferred STT Provider: ${preferredProvider}`);
-        return instance;
+  // Filter out any providers marked as FAILED in this session
+  const activeCandidates = providerList.filter((p) => !failedProviders.has(p.type));
+
+  // Determine starting index based on preferredProvider
+  let startIndex = activeCandidates.findIndex((p) => p.type === preferredProvider);
+  if (startIndex === -1) {
+    startIndex = 0;
+  }
+
+  for (let i = startIndex; i < activeCandidates.length; i++) {
+    const entry = activeCandidates[i];
+
+    // Startup Validation for Deepgram: check if client key is configured
+    if (entry.type === STT_PROVIDERS.DEEPGRAM) {
+      const hasClientKey = !!(options.apiKey || import.meta.env.VITE_DEEPGRAM_API_KEY || options.wsUrl);
+      const isServerDisabled = options.isDeepgramDisabled;
+
+      if (!hasClientKey && isServerDisabled) {
+        console.log('Deepgram disabled: Missing API key');
+        console.log('[StreamingSTT] Skipping Deepgram. Switching to next provider in hierarchy...');
+        failedProviders.add(STT_PROVIDERS.DEEPGRAM);
+        continue;
       }
-      console.warn(`[StreamingSTT] Preferred STT Provider (${preferredProvider}) not supported/configured. Falling back.`);
     }
-  }
 
-  // Iterate down the priority chain
-  for (const entry of providerList) {
-    const instance = new entry.class(options);
+    const instance = new entry.class({
+      ...options,
+      onFallbackRequired: () => {
+        markProviderFailed(entry.type);
+        if (options.onFallbackRequired) {
+          options.onFallbackRequired(entry.type);
+        }
+      }
+    });
+
     if (instance.isSupported()) {
-      console.log(`[StreamingSTT] Initialized Active STT Provider: ${entry.type}`);
+      console.log(`[StreamingSTT] Initializing provider: ${entry.type}`);
       return instance;
+    } else {
+      console.warn(`[StreamingSTT] Provider ${entry.type} not supported by environment.`);
+      failedProviders.add(entry.type);
     }
   }
 
-  // Final fallback: WebSpeech
-  console.log('[StreamingSTT] Initialized Fallback WebSpeech STT Provider');
+  // Final guaranteed fallback
+  console.log('[StreamingSTT] Fallback Provider Initializing: browser_webspeech');
   return new WebSpeechProvider(options);
 }

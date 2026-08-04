@@ -75,6 +75,15 @@ app.get("/", (req, res) => {
   });
 });
 
+// ✅ Speech STT Config Check
+app.get("/api/speech/config", (req, res) => {
+  const hasKey = !!process.env.DEEPGRAM_API_KEY;
+  res.status(200).json({
+    success: true,
+    deepgramAvailable: hasKey
+  });
+});
+
 // ✅ Routes
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
@@ -106,6 +115,8 @@ const PORT = process.env.PORT || 8000;
 
 const server = app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  const hasKey = !!process.env.DEEPGRAM_API_KEY;
+  console.log(`Deepgram key loaded: ${hasKey ? "YES" : "NO"}`);
   await connectDb();
 });
 

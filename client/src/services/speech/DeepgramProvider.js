@@ -82,6 +82,7 @@ export class DeepgramProvider {
 
             if (data.type === 'authenticated' || data.status === 'authenticated') {
               console.log('[StreamingSTT] Authenticated');
+              console.log('Active Provider: deepgram');
               this.isAuthenticated = true;
               this.isListening = true;
               this.isStarting = false;

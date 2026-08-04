@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createSpeechProvider } from '../services/speech/speechFactory.js';
 import { STT_PROVIDERS, STT_STATUS, STT_ERRORS } from '../services/speech/types.js';
 import { combineFinalAndPartial, sanitizeTranscript } from '../services/speech/smartMerge.js';
+import { ServerUrl } from '../config.js';
 
 export function useStreamingSpeechRecognition(options = {}) {
   const {
@@ -171,6 +172,22 @@ export function useStreamingSpeechRecognition(options = {}) {
   }, []);
 
   const [activeProvider, setActiveProvider] = useState(provider);
+  const [isDeepgramDisabled, setIsDeepgramDisabled] = useState(false);
+
+  // Check backend speech config on mount
+  useEffect(() => {
+    fetch(`${ServerUrl}/api/speech/config`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.success && !data.deepgramAvailable) {
+          setIsDeepgramDisabled(true);
+        }
+      })
+      .catch(() => {
+        // If config endpoint unreachable, assume disabled to avoid failing WS loops
+        setIsDeepgramDisabled(true);
+      });
+  }, []);
 
   const handleFallbackRequired = useCallback(() => {
     console.warn(`[StreamingSTT] Provider ${activeProvider} failed. Switching to fallback provider in hierarchy...`);
@@ -190,6 +207,7 @@ export function useStreamingSpeechRecognition(options = {}) {
     const instance = createSpeechProvider(activeProvider, {
       lang,
       silenceTimeoutMs,
+      isDeepgramDisabled,
       onPartial: handlePartial,
       onFinal: handleFinal,
       onStatusChange: handleStatusChange,
@@ -214,7 +232,7 @@ export function useStreamingSpeechRecognition(options = {}) {
         providerRef.current = null;
       }
     };
-  }, [activeProvider, lang, silenceTimeoutMs, autoStart, handlePartial, handleFinal, handleStatusChange, handleError, handleLatency, handleFallbackRequired, stopAudioAnalyzer]);
+  }, [activeProvider, lang, silenceTimeoutMs, isDeepgramDisabled, autoStart, handlePartial, handleFinal, handleStatusChange, handleError, handleLatency, handleFallbackRequired, stopAudioAnalyzer]);
 
   // Controls API
   const start = useCallback(() => {

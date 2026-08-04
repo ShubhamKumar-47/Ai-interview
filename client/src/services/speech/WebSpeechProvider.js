@@ -62,6 +62,7 @@ export class WebSpeechProvider {
       this.isStopping = false;
       this.lastSpeechTime = Date.now();
       console.log('[StreamingSTT] Recognition started');
+      console.log('Active Provider: browser_webspeech');
       this.onStatusChangeHandler(STT_STATUS.LISTENING);
       this.resetSilenceTimer();
     };
