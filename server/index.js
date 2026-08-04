@@ -99,10 +99,15 @@ app.use((err, req, res, next) => {
   });
 });
 
+import { setupSpeechProxy } from "./services/speechProxy.js";
+
 // 🚀 Start server
 const PORT = process.env.PORT || 8000;
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   await connectDb();
 });
+
+// Attach WebSocket Speech Proxy
+setupSpeechProxy(server);

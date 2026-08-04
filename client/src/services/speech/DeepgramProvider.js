@@ -1,14 +1,18 @@
 import { STT_STATUS, STT_ERRORS } from './types.js';
 import { sanitizeTranscript } from './smartMerge.js';
 import { AudioWorkletPCMPipeline } from './audioWorkletPCM.js';
+import { ServerUrl } from '../../config.js';
 
 export class DeepgramProvider {
   constructor(config = {}) {
+    // Convert Server HTTP URL (e.g. http://localhost:8000 or https://api.mockverse.online) to WS URL (ws://... or wss://...)
+    const defaultWsProxy = ServerUrl.replace(/^http/, 'ws') + '/api/speech/stream';
+
     this.config = {
-      apiKey: config.apiKey || import.meta.env.VITE_DEEPGRAM_API_KEY || '',
-      wsUrl: config.wsUrl || '',
+      wsUrl: config.wsUrl || import.meta.env.VITE_DEEPGRAM_WS_URL || defaultWsProxy,
       model: config.model || 'nova-2',
       language: config.language || 'en-US',
+      maxRetries: 3,
       ...config
     };
 
@@ -16,7 +20,13 @@ export class DeepgramProvider {
     this.pcmPipeline = null;
     this.isListening = false;
     this.isStarting = false;
+    this.isAuthenticated = false;
     this.shouldAutoRestart = false;
+
+    // Retry & exponential backoff tracking
+    this.retryCount = 0;
+    this.retryTimer = null;
+    this.hasLoggedSendingPCM = false;
 
     // Callbacks
     this.onPartialHandler = config.onPartial || (() => {});
@@ -24,6 +34,7 @@ export class DeepgramProvider {
     this.onErrorHandler = config.onError || (() => {});
     this.onStatusChangeHandler = config.onStatusChange || (() => {});
     this.onLatencyHandler = config.onLatency || (() => {});
+    this.onFallbackRequiredHandler = config.onFallbackRequired || (() => {});
 
     // Detailed Latency Instrumentation Timestamps
     this.timestamps = {
@@ -51,102 +62,133 @@ export class DeepgramProvider {
 
     this.isStarting = true;
     this.shouldAutoRestart = true;
+    this.hasLoggedSendingPCM = false;
+    console.log('[StreamingSTT] Connecting');
     this.onStatusChangeHandler(STT_STATUS.CONNECTING);
 
     try {
-      const wsTargetUrl = this.config.wsUrl || 
-        `wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=16000&model=${this.config.model}&language=${this.config.language}&punctuate=true&interim_results=true&endpointing=100&utterance_end_ms=1000&smart_format=false`;
-
-      const protocols = this.config.apiKey ? ['token', this.config.apiKey] : undefined;
-      this.socket = new WebSocket(wsTargetUrl, protocols);
+      this.socket = new WebSocket(this.config.wsUrl);
       this.socket.binaryType = 'arraybuffer';
 
-      this.socket.onopen = async () => {
-        console.log('[StreamingSTT] Deepgram WebSocket Connected');
-        this.isListening = true;
-        this.isStarting = false;
-        this.onStatusChangeHandler(STT_STATUS.LISTENING);
-
-        // Start AudioWorklet PCM Pipeline (16kHz 20ms chunks)
-        this.pcmPipeline = new AudioWorkletPCMPipeline((chunkBuffer) => {
-          if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-            const now = Date.now();
-            if (!this.timestamps.speechStart) {
-              this.timestamps.speechStart = now;
-            }
-            if (!this.timestamps.firstChunk) {
-              this.timestamps.firstChunk = now;
-            }
-            this.socket.send(chunkBuffer);
-          }
-        });
-
-        await this.pcmPipeline.start();
+      this.socket.onopen = () => {
+        console.log('[StreamingSTT] Socket Open');
       };
 
-      this.socket.onmessage = (event) => {
+      this.socket.onmessage = async (event) => {
         try {
-          const data = JSON.parse(event.data);
-          const responseTime = Date.now();
+          // Check for control JSON frames or transcript frames
+          if (typeof event.data === 'string') {
+            const data = JSON.parse(event.data);
 
-          const channel = data.channel || data.results?.channels?.[0];
-          const alternative = channel?.alternatives?.[0];
+            if (data.type === 'authenticated' || data.status === 'authenticated') {
+              console.log('[StreamingSTT] Authenticated');
+              this.isAuthenticated = true;
+              this.isListening = true;
+              this.isStarting = false;
+              this.retryCount = 0; // Reset backoff counter on successful auth
+              this.onStatusChangeHandler(STT_STATUS.LISTENING);
 
-          if (alternative && alternative.transcript) {
-            const rawTranscript = alternative.transcript;
-            const isFinal = data.is_final || data.speech_final;
-
-            if (!this.timestamps.providerResponse) {
-              this.timestamps.providerResponse = responseTime;
+              // Start AudioWorklet PCM Pipeline strictly AFTER socket is OPEN & Authenticated
+              await this.startAudioPipeline();
+              return;
             }
-            this.timestamps.partialTranscript = Date.now();
 
-            const totalLatency = this.timestamps.speechStart ? (this.timestamps.partialTranscript - this.timestamps.speechStart) : 0;
+            if (data.type === 'error' && (data.code === 'NO_KEY' || data.code === 'DEEPGRAM_ERROR')) {
+              console.warn(`[StreamingSTT] Deepgram Proxy Error: ${data.message}`);
+              this.handleFallback();
+              return;
+            }
 
-            console.log(`[StreamingSTT]\nSpeech Start: ${this.formatTimestamp(this.timestamps.speechStart)}\nFirst Chunk: ${this.formatTimestamp(this.timestamps.firstChunk)}\nProvider Response: ${this.formatTimestamp(this.timestamps.providerResponse)}\nPartial Transcript: ${this.formatTimestamp(this.timestamps.partialTranscript)}\nTotal Latency: ${totalLatency}ms`);
+            const channel = data.channel || data.results?.channels?.[0];
+            const alternative = channel?.alternatives?.[0];
 
-            this.onLatencyHandler(totalLatency);
+            if (alternative && alternative.transcript) {
+              const rawTranscript = alternative.transcript;
+              const isFinal = data.is_final || data.speech_final;
 
-            if (isFinal) {
-              console.log('[StreamingSTT] Deepgram Final:', rawTranscript);
-              this.onFinalHandler(sanitizeTranscript(rawTranscript, false));
-              // Reset timestamps for next phrase
-              this.timestamps.speechStart = 0;
-              this.timestamps.firstChunk = 0;
-              this.timestamps.providerResponse = 0;
-            } else {
-              console.log('[StreamingSTT] Deepgram Partial:', rawTranscript);
-              this.onPartialHandler(sanitizeTranscript(rawTranscript, false));
+              const responseTime = Date.now();
+              if (!this.timestamps.providerResponse) {
+                this.timestamps.providerResponse = responseTime;
+                console.log('[StreamingSTT] Receiving Transcript');
+              }
+              this.timestamps.partialTranscript = Date.now();
+
+              const totalLatency = this.timestamps.speechStart ? (this.timestamps.partialTranscript - this.timestamps.speechStart) : 0;
+
+              console.log(`[StreamingSTT]\nSpeech Start: ${this.formatTimestamp(this.timestamps.speechStart)}\nFirst Chunk: ${this.formatTimestamp(this.timestamps.firstChunk)}\nProvider Response: ${this.formatTimestamp(this.timestamps.providerResponse)}\nPartial Transcript: ${this.formatTimestamp(this.timestamps.partialTranscript)}\nTotal Latency: ${totalLatency}ms`);
+
+              this.onLatencyHandler(totalLatency);
+
+              if (isFinal) {
+                console.log('[StreamingSTT] Deepgram Final:', rawTranscript);
+                this.onFinalHandler(sanitizeTranscript(rawTranscript, false));
+                this.timestamps.speechStart = 0;
+                this.timestamps.firstChunk = 0;
+                this.timestamps.providerResponse = 0;
+              } else {
+                console.log('[StreamingSTT] Deepgram Partial:', rawTranscript);
+                this.onPartialHandler(sanitizeTranscript(rawTranscript, false));
+              }
             }
           }
         } catch (err) {
-          console.warn('[StreamingSTT] Deepgram message parse error:', err);
+          console.warn('[StreamingSTT] Message parse warning:', err);
         }
       };
 
       this.socket.onerror = (err) => {
-        console.error('[StreamingSTT] Deepgram Socket error:', err);
+        console.error('[StreamingSTT] Socket error:', err);
         this.onErrorHandler(STT_ERRORS.NETWORK);
       };
 
-      this.socket.onclose = () => {
-        console.log('[StreamingSTT] Deepgram Socket closed');
+      this.socket.onclose = (event) => {
+        console.log(`[StreamingSTT] Socket Closed (Code: ${event.code})`);
         this.isListening = false;
         this.isStarting = false;
+        this.isAuthenticated = false;
         this.stopAudioPipeline();
 
+        if (event.code === 4001 || event.code === 4002) {
+          console.warn('[StreamingSTT] Server denied connection or missing key. Triggering fallback.');
+          this.handleFallback();
+          return;
+        }
+
         if (this.shouldAutoRestart) {
-          this.handleAutoRestart();
+          this.scheduleReconnect();
         } else {
           this.onStatusChangeHandler(STT_STATUS.IDLE);
         }
       };
     } catch (err) {
       this.isStarting = false;
-      console.error('[StreamingSTT] Deepgram start failed:', err);
-      this.onStatusChangeHandler(STT_STATUS.ERROR);
-      this.onErrorHandler(STT_ERRORS.PERMISSION_DENIED);
+      console.error('[StreamingSTT] Connection setup failed:', err);
+      this.scheduleReconnect();
     }
+  }
+
+  async startAudioPipeline() {
+    if (this.pcmPipeline) return;
+
+    this.pcmPipeline = new AudioWorkletPCMPipeline((chunkBuffer) => {
+      // STRICT GUARD: Never send audio unless WebSocket is OPEN and Authenticated
+      if (this.socket && this.socket.readyState === WebSocket.OPEN && this.isAuthenticated) {
+        const now = Date.now();
+        if (!this.timestamps.speechStart) {
+          this.timestamps.speechStart = now;
+        }
+        if (!this.timestamps.firstChunk) {
+          this.timestamps.firstChunk = now;
+        }
+        if (!this.hasLoggedSendingPCM) {
+          console.log('[StreamingSTT] Sending PCM');
+          this.hasLoggedSendingPCM = true;
+        }
+        this.socket.send(chunkBuffer);
+      }
+    });
+
+    await this.pcmPipeline.start();
   }
 
   stopAudioPipeline() {
@@ -156,23 +198,51 @@ export class DeepgramProvider {
     }
   }
 
-  handleAutoRestart() {
-    if (!this.shouldAutoRestart || this.isStarting) return;
-    setTimeout(() => {
-      if (this.shouldAutoRestart && !this.isListening) {
+  scheduleReconnect() {
+    if (!this.shouldAutoRestart) return;
+
+    this.retryCount++;
+    if (this.retryCount > this.config.maxRetries) {
+      console.warn(`[StreamingSTT] Reached max reconnect attempts (${this.config.maxRetries}). Initiating provider fallback.`);
+      this.handleFallback();
+      return;
+    }
+
+    // Exponential Backoff: 1s, 2s, 4s, 8s, max 30s
+    const backoffMs = Math.min(30000, Math.pow(2, this.retryCount - 1) * 1000);
+    console.log(`[StreamingSTT] Reconnect (attempt ${this.retryCount}/${this.config.maxRetries}, backoff ${backoffMs / 1000}s)`);
+
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+
+    this.retryTimer = setTimeout(() => {
+      if (this.shouldAutoRestart && !this.isListening && !this.isStarting) {
         this.start();
       }
-    }, 500);
+    }, backoffMs);
+  }
+
+  handleFallback() {
+    this.stop();
+    if (this.onFallbackRequiredHandler) {
+      console.log('[StreamingSTT] Falling back to next available provider in hierarchy...');
+      this.onFallbackRequiredHandler();
+    }
   }
 
   stop() {
     this.shouldAutoRestart = false;
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
     this.stopAudioPipeline();
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       this.socket.close();
     }
+    this.socket = null;
     this.isListening = false;
     this.isStarting = false;
+    this.isAuthenticated = false;
   }
 
   abort() {

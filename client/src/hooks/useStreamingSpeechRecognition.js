@@ -170,16 +170,32 @@ export function useStreamingSpeechRecognition(options = {}) {
     setLatencyMs(latency);
   }, []);
 
+  const [activeProvider, setActiveProvider] = useState(provider);
+
+  const handleFallbackRequired = useCallback(() => {
+    console.warn(`[StreamingSTT] Provider ${activeProvider} failed. Switching to fallback provider in hierarchy...`);
+    if (activeProvider === STT_PROVIDERS.DEEPGRAM) {
+      setActiveProvider(STT_PROVIDERS.GOOGLE_CLOUD);
+    } else if (activeProvider === STT_PROVIDERS.GOOGLE_CLOUD) {
+      setActiveProvider(STT_PROVIDERS.ASSEMBLY_AI);
+    } else if (activeProvider === STT_PROVIDERS.ASSEMBLY_AI) {
+      setActiveProvider(STT_PROVIDERS.WHISPER_LIVE);
+    } else {
+      setActiveProvider(STT_PROVIDERS.WEB_SPEECH);
+    }
+  }, [activeProvider]);
+
   // Initialize Speech Provider
   useEffect(() => {
-    const instance = createSpeechProvider(provider, {
+    const instance = createSpeechProvider(activeProvider, {
       lang,
       silenceTimeoutMs,
       onPartial: handlePartial,
       onFinal: handleFinal,
       onStatusChange: handleStatusChange,
       onError: handleError,
-      onLatency: handleLatency
+      onLatency: handleLatency,
+      onFallbackRequired: handleFallbackRequired
     });
 
     providerRef.current = instance;
@@ -198,7 +214,7 @@ export function useStreamingSpeechRecognition(options = {}) {
         providerRef.current = null;
       }
     };
-  }, [provider, lang, silenceTimeoutMs, autoStart, handlePartial, handleFinal, handleStatusChange, handleError, handleLatency, stopAudioAnalyzer]);
+  }, [activeProvider, lang, silenceTimeoutMs, autoStart, handlePartial, handleFinal, handleStatusChange, handleError, handleLatency, handleFallbackRequired, stopAudioAnalyzer]);
 
   // Controls API
   const start = useCallback(() => {
