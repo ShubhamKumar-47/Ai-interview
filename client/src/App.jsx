@@ -58,15 +58,30 @@ function App() {
 
         console.log("Fetching current user with valid token...")
 
-        const result = await axios.get(
-          ServerUrl + "/api/user/current-user",
-          {
-            withCredentials: true,
+        try {
+          const result = await axios.get(
+            ServerUrl + "/api/user/current-user",
+            { withCredentials: true }
+          )
+          console.log("Current user fetched:", result.data)
+          dispatch(setUserData(result.data))
+        } catch (currentUserError) {
+          console.log("Backend session missing or expired on refresh, restoring session for:", user.email, currentUserError?.message)
+          // Re-create backend session automatically using Firebase user profile
+          const name = user.displayName || user.email
+          const email = user.email
+          const authResult = await axios.post(
+            ServerUrl + "/api/auth/google",
+            { name, email },
+            { withCredentials: true }
+          )
+          if (authResult.data && authResult.data.user) {
+            console.log("Backend session restored successfully on refresh:", authResult.data.user)
+            dispatch(setUserData(authResult.data.user))
+          } else {
+            dispatch(setUserData(null))
           }
-        )
-
-        console.log("Current user fetched:", result.data)
-        dispatch(setUserData(result.data))
+        }
 
       } catch (error) {
         console.log("Auth Error:", error?.response?.data || error.message)
